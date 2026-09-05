@@ -1,0 +1,132 @@
+# College Library Management Portal
+
+An industry-style college library portal built with a Java Spring Boot backend and a React TypeScript frontend.
+
+The architecture is designed so the college can start with roll-number login now, add college email login later, use QR codes for users and books, and integrate RFID without redesigning the core database.
+
+## Tech Stack
+
+- Backend: Java 21, Spring Boot, Spring Web, Spring Security, Spring Data JPA
+- Frontend: React, TypeScript, Vite
+- Local database: H2 in PostgreSQL compatibility mode
+- Production database: PostgreSQL
+
+## Project Structure
+
+```text
+backend/
+  src/main/java/com/college/library/
+    auth/          Login API
+    catalog/       Books, physical copies, QR/RFID scan resolution
+    circulation/   Issue and return flows
+    config/        Security, CORS, local seed data
+    identity/      Users, roles, identifiers, credentials
+frontend/
+  src/
+    App.tsx        Main portal UI
+    api.ts         Typed API client
+```
+
+## Backend Design Principles
+
+- Controllers depend on service interfaces such as `AuthUseCase`, `CatalogService`, and `CirculationUseCase`.
+- Services depend on abstractions such as `AuditLogger` and `IdentityResolver` instead of concrete implementations.
+- Repository interfaces stay in the persistence layer and are hidden from controllers.
+- QR and RFID are modeled as identifier inputs, not separate business workflows.
+- Circulation logic is centralized so QR and RFID scans both use the same issue, return, renew, and reserve rules.
+
+## Run Locally
+
+Start backend:
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+Start frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the frontend at `http://localhost:5173`.
+
+Optional PostgreSQL container:
+
+```bash
+docker compose up -d
+```
+
+## Demo Accounts
+
+Student:
+
+- Identifier type: `ROLL_NUMBER`
+- Identifier: `CS2026001`
+- Password: `student123`
+- User QR credential: `USER-QR-CS2026001`
+
+Librarian:
+
+- Identifier type: `ROLL_NUMBER`
+- Identifier: `LIB001`
+- Password: `library123`
+
+## QR And RFID Design
+
+Users are not identified directly by only one field. The system uses a `UserAccount` plus many `UserIdentifier` records.
+
+Supported identifier types:
+
+- `ROLL_NUMBER`
+- `COLLEGE_EMAIL`
+- `PHONE_NUMBER`
+- `QR_CREDENTIAL`
+- `RFID_CARD`
+
+Books are tracked at physical-copy level. Each `BookCopy` has:
+
+- Accession number
+- QR code value
+- Optional RFID tag UID hash
+- Shelf location
+- Availability status
+
+This means QR scanning and RFID scanning can both resolve to the same book copy and use the same issue/return logic.
+
+## Current API Endpoints
+
+- `POST /api/auth/login`
+- `POST /api/auth/scan-login`
+- `GET /api/catalog/books?query=clean`
+- `GET /api/catalog/scan?type=QR&value=BOOK-QR-ACC-0001`
+- `POST /api/circulation/issue`
+- `POST /api/circulation/return/{bookCopyId}`
+- `POST /api/circulation/renew/{transactionId}`
+- `POST /api/circulation/reserve`
+
+## MVP Implemented In This Scaffold
+
+- Role-ready users: student, faculty, librarian, admin, super admin.
+- Roll-number login with hashed password storage.
+- Passwordless QR/RFID credential login endpoint for controlled scan sessions.
+- Book catalog with copy-level tracking.
+- QR and RFID scan resolver for physical book copies.
+- Issue, return, renew, and reserve workflows.
+- Automatic overdue fine calculation in circulation responses.
+- Audit records for login, scans, issue, return, renew, and reserve actions.
+- H2 local database and PostgreSQL production configuration.
+
+## Next Features To Add
+
+- JWT access token validation
+- Admin book and user management screens
+- QR code image generation
+- Camera-based QR scanner integration
+- Fine calculation and payment workflow
+- Reservation and renewal workflow
+- Audit logs and reports
+- PostgreSQL migration scripts using Flyway or Liquibase

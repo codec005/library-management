@@ -1,0 +1,18 @@
+# Java
+target/
+*.class
+.m2/
+backend/.m2/
+
+# Node
+node_modules/
+dist/
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+
+# Environment
+.env
+.env.local

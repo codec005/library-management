@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: college-library-postgres
+    environment:
+      POSTGRES_DB: library_management
+      POSTGRES_USER: library_user
+      POSTGRES_PASSWORD: library_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
