@@ -124,7 +124,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new ApiError(`Request failed with status ${response.status}`, response.status);
+    let message = `Request failed with status ${response.status}`;
+
+    try {
+      const problem = await response.json() as { detail?: string; title?: string };
+      message = problem.detail ?? problem.title ?? message;
+    } catch {
+      // Keep the status-based fallback when the backend returns no JSON body.
+    }
+
+    throw new ApiError(message, response.status);
   }
 
   if (response.status === 204) {

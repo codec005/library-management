@@ -24,7 +24,6 @@ import {
   listUsers,
   login,
   renewTransaction,
-  registerStudentAsGuest,
   registerUser,
   removeBookCopyByQrCode,
   removeUser,
@@ -54,6 +53,7 @@ export default function App() {
   const [selectedUserDetails, setSelectedUserDetails] = useState<UserDetailsResponse | null>(null);
   const [selectedUserIssuedBooks, setSelectedUserIssuedBooks] = useState<CirculationResponse[]>([]);
   const [generatedQr, setGeneratedQr] = useState<{ fullName: string; dataUrl: string; value: string } | null>(null);
+  const [isUserDirectoryOpen, setIsUserDirectoryOpen] = useState(false);
   const [bookCopyQrValue, setBookCopyQrValue] = useState("");
   const [generateQrAfterAdd, setGenerateQrAfterAdd] = useState(false);
   const [generatedBookQrs, setGeneratedBookQrs] = useState<Array<BookCopySummary & { dataUrl: string }>>([]);
@@ -84,7 +84,7 @@ export default function App() {
   const canManageLibrarians = currentUser?.roles.some((role) => ["ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canManageBooks = currentUser?.roles.some((role) => ["LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canManageCollegeBranding = currentUser?.roles.some((role) => ["ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
-  const canShowUserRegistration = !currentUser || canManageStudents || canManageLibrarians;
+  const canShowUserRegistration = canManageStudents || canManageLibrarians;
   const canShowManagement = canShowUserRegistration || canManageBooks;
   const visibleManagedUsers = useMemo(
     () => users.filter((user) => canManageLibrarians || user.roles.includes("STUDENT")),
@@ -144,6 +144,7 @@ export default function App() {
     setSelectedUserDetails(null);
     setSelectedUserIssuedBooks([]);
     setGeneratedQr(null);
+    setIsUserDirectoryOpen(false);
     setGeneratedBookQrs([]);
     setBookCopyQrValue("");
     setScanResult(null);
@@ -284,14 +285,17 @@ export default function App() {
     event.preventDefault();
     setMessage("");
 
+    if (!currentUser) {
+      setMessage("Sign in as librarian or admin to register users.");
+      return;
+    }
+
     try {
       const payload = {
         ...registrationForm,
         collegeEmail: registrationForm.collegeEmail || undefined
       };
-      const user = currentUser
-        ? await registerUser(payload, currentUser.userId)
-        : await registerStudentAsGuest(payload);
+      const user = await registerUser(payload, currentUser.userId);
 
       setUsers(await listUsers());
       setRegistrationForm({
@@ -732,7 +736,7 @@ export default function App() {
             <Users size={22} />
             <div>
               <h2>User Registration</h2>
-              <p>Guests can register students. Admin can register librarians and admins.</p>
+              <p>Librarians can register students. Admin can register librarians and admins.</p>
             </div>
           </div>
 
@@ -777,101 +781,9 @@ export default function App() {
           </form>
 
           {canManageStudents && (
-            <div className="user-list">
-              <h3>{canManageLibrarians ? "Registered Users" : "Students"}</h3>
-              {visibleManagedUsers.length === 0 ? (
-                <p>{canManageLibrarians ? "No registered users found." : "No students found."}</p>
-              ) : (
-                visibleManagedUsers.map((user) => (
-                  <div className="compact-row" key={user.id}>
-                    <div>
-                      <strong>{user.fullName}</strong>
-                      <span>{user.roles.join(", ")} · {user.department}</span>
-                    </div>
-                    <div className="compact-actions">
-                      {(user.roles.includes("STUDENT") || canManageLibrarians) && (
-                        <button type="button" onClick={() => void handleViewUser(user)}>
-                          View Details
-                        </button>
-                      )}
-                      <button type="button" onClick={() => void handleGenerateUserQr(user)}>
-                        Generate QR
-                      </button>
-                      {((user.roles.includes("STUDENT") && canManageStudents)
-                        || (user.roles.includes("LIBRARIAN") && canManageLibrarians)
-                        || (user.roles.includes("ADMIN") && canManageLibrarians && user.id !== currentUser?.userId)) && (
-                        <button type="button" className="danger-button" onClick={() => handleRemoveUser(user)}>
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {selectedUserDetails && (
-            <div className="student-detail-card">
-              <h3>{selectedUserDetails.fullName}</h3>
-              <dl className="details-list">
-                <div>
-                  <dt>Department</dt>
-                  <dd>{selectedUserDetails.department}</dd>
-                </div>
-                <div>
-                  <dt>Role</dt>
-                  <dd>{selectedUserDetails.roles.join(", ")}</dd>
-                </div>
-                {selectedUserDetails.identifiers.map((identifierItem) => (
-                  <div key={`${identifierItem.type}-${identifierItem.value}`}>
-                    <dt>{identifierItem.type.replace(/_/g, " ")}</dt>
-                    <dd>{identifierItem.value}</dd>
-                  </div>
-                ))}
-              </dl>
-
-              {selectedUserDetails.roles.includes("STUDENT") && (
-              <div className="issued-list">
-                <h3>Issued Books</h3>
-                <div className="total-fine">Total Fine: Rs {selectedUserTotalFine}</div>
-                {selectedUserIssuedBooks.length === 0 ? (
-                  <p>No books are currently issued to this user.</p>
-                ) : (
-                  selectedUserIssuedBooks.map((book) => (
-                    <div className="compact-row" key={book.transactionId}>
-                      <div>
-                        <strong>{book.bookTitle}</strong>
-                        <span>
-                          {book.accessionNumber} · Return by {book.dueOn} · Loan {book.loanPeriodDays} days · {book.overdueDays} overdue days · Rs {book.finePerDay}/day
-                        </span>
-                      </div>
-                      <div className="compact-actions">
-                        <span className="availability">Fine Rs {book.fineAmount}</span>
-                        <button type="button" onClick={() => void handleRenewIssuedBook(book)}>
-                          Renew
-                        </button>
-                        <button type="button" className="danger-button" onClick={() => void handleReturnIssuedBook(book)}>
-                          Return
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-              )}
-            </div>
-          )}
-
-          {generatedQr && (
-            <div className="qr-preview-card">
-              <strong>{generatedQr.fullName}</strong>
-              <img src={generatedQr.dataUrl} alt={`QR code for ${generatedQr.fullName}`} />
-              <code>{generatedQr.value}</code>
-              <button type="button" onClick={handleDownloadQr}>
-                Save QR Locally
-              </button>
-            </div>
+            <button type="button" className="secondary-button directory-button" onClick={() => setIsUserDirectoryOpen(true)}>
+              Open {canManageLibrarians ? "User Directory" : "Student Directory"}
+            </button>
           )}
         </article>
         )}
@@ -1016,6 +928,133 @@ export default function App() {
           </article>
         )}
       </section>
+      )}
+
+      {canManageStudents && isUserDirectoryOpen && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="User directory">
+          <div className="modal-panel">
+            <div className="modal-header">
+              <div>
+                <h2>{canManageLibrarians ? "User Directory" : "Student Directory"}</h2>
+                <p>Open a user to view details, generated QR credentials, issued books, and fines.</p>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setIsUserDirectoryOpen(false);
+                  setSelectedUserDetails(null);
+                  setSelectedUserIssuedBooks([]);
+                  setGeneratedQr(null);
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="modal-content-grid">
+              <div className="user-list">
+                <h3>{canManageLibrarians ? "Registered Users" : "Students"}</h3>
+                {visibleManagedUsers.length === 0 ? (
+                  <p>{canManageLibrarians ? "No registered users found." : "No students found."}</p>
+                ) : (
+                  visibleManagedUsers.map((user) => (
+                    <div className="compact-row" key={user.id}>
+                      <div>
+                        <strong>{user.fullName}</strong>
+                        <span>{user.roles.join(", ")} · {user.department}</span>
+                      </div>
+                      <div className="compact-actions">
+                        {(user.roles.includes("STUDENT") || canManageLibrarians) && (
+                          <button type="button" onClick={() => void handleViewUser(user)}>
+                            View Details
+                          </button>
+                        )}
+                        <button type="button" onClick={() => void handleGenerateUserQr(user)}>
+                          Generate QR
+                        </button>
+                        {((user.roles.includes("STUDENT") && canManageStudents)
+                          || (user.roles.includes("LIBRARIAN") && canManageLibrarians)
+                          || (user.roles.includes("ADMIN") && canManageLibrarians && user.id !== currentUser?.userId)) && (
+                          <button type="button" className="danger-button" onClick={() => handleRemoveUser(user)}>
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div>
+                {selectedUserDetails ? (
+                  <div className="student-detail-card">
+                    <h3>{selectedUserDetails.fullName}</h3>
+                    <dl className="details-list">
+                      <div>
+                        <dt>Department</dt>
+                        <dd>{selectedUserDetails.department}</dd>
+                      </div>
+                      <div>
+                        <dt>Role</dt>
+                        <dd>{selectedUserDetails.roles.join(", ")}</dd>
+                      </div>
+                      {selectedUserDetails.identifiers.map((identifierItem) => (
+                        <div key={`${identifierItem.type}-${identifierItem.value}`}>
+                          <dt>{identifierItem.type.replace(/_/g, " ")}</dt>
+                          <dd>{identifierItem.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+
+                    {selectedUserDetails.roles.includes("STUDENT") && (
+                      <div className="issued-list">
+                        <h3>Issued Books</h3>
+                        <div className="total-fine">Total Fine: Rs {selectedUserTotalFine}</div>
+                        {selectedUserIssuedBooks.length === 0 ? (
+                          <p>No books are currently issued to this user.</p>
+                        ) : (
+                          selectedUserIssuedBooks.map((book) => (
+                            <div className="compact-row" key={book.transactionId}>
+                              <div>
+                                <strong>{book.bookTitle}</strong>
+                                <span>
+                                  {book.accessionNumber} · Return by {book.dueOn} · Loan {book.loanPeriodDays} days · {book.overdueDays} overdue days · Rs {book.finePerDay}/day
+                                </span>
+                              </div>
+                              <div className="compact-actions">
+                                <span className="availability">Fine Rs {book.fineAmount}</span>
+                                <button type="button" onClick={() => void handleRenewIssuedBook(book)}>
+                                  Renew
+                                </button>
+                                <button type="button" className="danger-button" onClick={() => void handleReturnIssuedBook(book)}>
+                                  Return
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="empty-state">Select a user to view details.</div>
+                )}
+
+                {generatedQr && (
+                  <div className="qr-preview-card">
+                    <strong>{generatedQr.fullName}</strong>
+                    <img src={generatedQr.dataUrl} alt={`QR code for ${generatedQr.fullName}`} />
+                    <code>{generatedQr.value}</code>
+                    <button type="button" onClick={handleDownloadQr}>
+                      Save QR Locally
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

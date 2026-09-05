@@ -6,6 +6,7 @@ import com.college.library.identity.IdentityResolver;
 import com.college.library.identity.IdentifierType;
 import com.college.library.identity.UserAccount;
 import com.college.library.identity.UserCredentialRepository;
+import com.college.library.identity.UserRole;
 import java.util.UUID;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -41,6 +42,10 @@ public class AuthService implements AuthUseCase {
 
         if (!user.isActive()) {
             throw new BadCredentialsException("Account is inactive");
+        }
+
+        if (user.getRoles().contains(UserRole.STUDENT)) {
+            throw new BadCredentialsException("Students can login only through QR scan");
         }
 
         boolean matches = userCredentialRepository.findByUser(user)

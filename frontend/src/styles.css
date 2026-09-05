@@ -406,6 +406,10 @@ label {
   grid-column: 1 / -1;
 }
 
+.directory-button {
+  margin-top: 1rem;
+}
+
 .inline-checkbox {
   align-items: center;
   flex-direction: row;
@@ -567,6 +571,53 @@ label {
   line-height: 1.5;
 }
 
+.modal-backdrop {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.58);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1rem;
+  position: fixed;
+  z-index: 50;
+}
+
+.modal-panel {
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.35);
+  max-height: min(860px, 92vh);
+  max-width: 1120px;
+  overflow: auto;
+  padding: 1.25rem;
+  width: min(1120px, 100%);
+}
+
+.modal-header {
+  align-items: flex-start;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding-bottom: 1rem;
+}
+
+.modal-header h2,
+.modal-header p {
+  margin: 0;
+}
+
+.modal-header p {
+  color: #64748b;
+  margin-top: 0.3rem;
+}
+
+.modal-content-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
+}
+
 .staff-issue-grid {
   display: grid;
   gap: 0.75rem;
@@ -646,6 +697,10 @@ label {
   .inline-form,
   .scan-form,
   .management-form {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-content-grid {
     grid-template-columns: 1fr;
   }
 }
