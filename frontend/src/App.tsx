@@ -39,7 +39,8 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [userScanValue, setUserScanValue] = useState("");
   const [currentUser, setCurrentUser] = useState<LoginResponse | null>(null);
-  const [logoUrl, setLogoUrl] = useState("");
+  const [logoUrl, setLogoUrl] = useState(() => localStorage.getItem("collegeLogoUrl") ?? "");
+  const [collegeName, setCollegeName] = useState(() => localStorage.getItem("collegeName") ?? "");
   const [query, setQuery] = useState("");
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [users, setUsers] = useState<UserSummary[]>([]);
@@ -54,6 +55,7 @@ export default function App() {
   const [selectedUserIssuedBooks, setSelectedUserIssuedBooks] = useState<CirculationResponse[]>([]);
   const [generatedQr, setGeneratedQr] = useState<{ fullName: string; dataUrl: string; value: string } | null>(null);
   const [isUserDirectoryOpen, setIsUserDirectoryOpen] = useState(false);
+  const [isIssuedBooksWindowOpen, setIsIssuedBooksWindowOpen] = useState(false);
   const [bookCopyQrValue, setBookCopyQrValue] = useState("");
   const [generateQrAfterAdd, setGenerateQrAfterAdd] = useState(false);
   const [generatedBookQrs, setGeneratedBookQrs] = useState<Array<BookCopySummary & { dataUrl: string }>>([]);
@@ -79,6 +81,17 @@ export default function App() {
   const [message, setMessage] = useState("");
 
   const activeRole = useMemo(() => currentUser?.roles[0] ?? "Guest", [currentUser]);
+  const loginIdentifierLabel = useMemo(() => {
+    const labels: Record<IdentifierType, string> = {
+      ROLL_NUMBER: "Roll Number",
+      COLLEGE_EMAIL: "College Email",
+      PHONE_NUMBER: "Phone Number",
+      QR_CREDENTIAL: "QR Credential",
+      RFID_CARD: "RFID Card"
+    };
+
+    return labels[identifierType];
+  }, [identifierType]);
   const isStudent = currentUser?.roles.includes("STUDENT") ?? false;
   const canManageStudents = currentUser?.roles.some((role) => ["LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canManageLibrarians = currentUser?.roles.some((role) => ["ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
@@ -117,9 +130,17 @@ export default function App() {
 
     const reader = new FileReader();
     reader.onload = () => {
-      setLogoUrl(String(reader.result));
+      const uploadedLogoUrl = String(reader.result);
+      setLogoUrl(uploadedLogoUrl);
+      localStorage.setItem("collegeLogoUrl", uploadedLogoUrl);
     };
     reader.readAsDataURL(file);
+  }
+
+  function handleCollegeNameChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const value = event.target.value;
+    setCollegeName(value);
+    localStorage.setItem("collegeName", value);
   }
 
   async function loadCurrentUserViews(user: LoginResponse) {
@@ -145,6 +166,7 @@ export default function App() {
     setSelectedUserIssuedBooks([]);
     setGeneratedQr(null);
     setIsUserDirectoryOpen(false);
+    setIsIssuedBooksWindowOpen(false);
     setGeneratedBookQrs([]);
     setBookCopyQrValue("");
     setScanResult(null);
@@ -188,34 +210,43 @@ export default function App() {
     }
   }
 
-  async function resolveBookScan(type = scanType, value = scanValue) {
+  async function resolveBookCopy(type = scanType, value = scanValue) {
     setMessage("");
 
     try {
-      setScanResult(await scanBookCopy(type, value));
+      const result = await scanBookCopy(type, value);
+      setScanResult(result);
+      return result;
     } catch (error) {
       setScanResult(null);
       setMessage(error instanceof Error ? error.message : "No book copy found for this scan value.");
+      return null;
     }
   }
 
   async function handleScan(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await resolveBookScan();
+    await resolveBookCopy();
   }
 
   async function handleIssue() {
-    if (!currentUser || !scanResult) {
-      setMessage("Sign in and scan a book copy before issuing.");
+    if (!currentUser) {
+      setMessage("Sign in before issuing a book.");
+      return;
+    }
+
+    const selectedCopy = scanResult ?? await resolveBookCopy();
+    if (!selectedCopy) {
+      setMessage("Enter or scan a valid book QR/RFID value before issuing.");
       return;
     }
 
     try {
-      const transaction = await issueBookCopy(scanResult.copyId, currentUser.userId);
+      const transaction = await issueBookCopy(selectedCopy.copyId, currentUser.userId);
       await loadCurrentUserViews(currentUser);
       setBooks(await searchBooks(query));
       setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName}.`);
-      setScanResult({ ...scanResult, status: "ISSUED" });
+      setScanResult({ ...selectedCopy, status: "ISSUED" });
     } catch {
       setMessage("Issue failed. The copy may already be issued or unavailable.");
     }
@@ -357,16 +388,29 @@ export default function App() {
 
     try {
       const details = await getUserDetails(user.id, currentUser.userId);
-      const issuedBooks = user.roles.includes("STUDENT")
-        ? await listIssuedBooksForUser(user.id, currentUser.userId)
-        : [];
       setSelectedUserDetails(details);
-      setSelectedUserIssuedBooks(issuedBooks);
+      setSelectedUserIssuedBooks([]);
+      setIsIssuedBooksWindowOpen(false);
       setMessage(`Showing details for ${details.fullName}.`);
     } catch (error) {
       setSelectedUserDetails(null);
       setSelectedUserIssuedBooks([]);
+      setIsIssuedBooksWindowOpen(false);
       setMessage(error instanceof Error ? error.message : "Unable to load user details.");
+    }
+  }
+
+  async function handleOpenIssuedBooks() {
+    if (!currentUser || !selectedUserDetails) {
+      setMessage("Select a student before viewing issued books.");
+      return;
+    }
+
+    try {
+      setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
+      setIsIssuedBooksWindowOpen(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load issued books.");
     }
   }
 
@@ -474,20 +518,30 @@ export default function App() {
 
   return (
     <main className="app-shell">
+      {logoUrl && <img className="portal-watermark" src={logoUrl} alt="" aria-hidden="true" />}
+
       <header className="portal-header">
         <div className="brand-block">
-          <div className="college-mark">
-            {logoUrl ? <img src={logoUrl} alt="College logo" /> : "CL"}
+          <div className="college-identity">
+            <div className={logoUrl ? "college-mark uploaded-logo" : "college-mark"}>
+              {logoUrl ? <img src={logoUrl} alt="College logo" /> : "CL"}
+            </div>
           </div>
           <div>
-            <p className="eyebrow">College Portal</p>
+            <p className={collegeName ? "college-name" : "eyebrow"}>{collegeName || "College Portal"}</p>
             <h1>Central Library Management</h1>
             <p className="header-subtitle">Student registration, catalog search, circulation, and QR services.</p>
             {canManageCollegeBranding && (
-              <label className="logo-upload">
-                Add college logo
-                <input type="file" accept="image/*" onChange={handleLogoUpload} />
-              </label>
+              <div className="branding-controls">
+                <label className="logo-upload">
+                  Add college logo
+                  <input type="file" accept="image/*" onChange={handleLogoUpload} />
+                </label>
+                <label className="college-name-field">
+                  College name
+                  <input placeholder="Enter college name" value={collegeName} onChange={handleCollegeNameChange} />
+                </label>
+              </div>
             )}
           </div>
         </div>
@@ -566,7 +620,7 @@ export default function App() {
             <Users size={22} />
             <div>
               <h2>Portal Login</h2>
-              <p>Use roll number now. College email can be enabled later.</p>
+              <p>Sign in to continue.</p>
             </div>
           </div>
 
@@ -575,14 +629,16 @@ export default function App() {
             <select value={identifierType} onChange={(event) => setIdentifierType(event.target.value as IdentifierType)}>
               <option value="ROLL_NUMBER">Roll Number</option>
               <option value="COLLEGE_EMAIL">College Email</option>
-              <option value="QR_CREDENTIAL">QR Credential</option>
-              <option value="RFID_CARD">RFID Card</option>
             </select>
           </label>
 
           <label>
-            Identifier
-            <input value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
+            {loginIdentifierLabel}
+            <input
+              placeholder={`Enter ${loginIdentifierLabel.toLowerCase()}`}
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+            />
           </label>
 
           <label>
@@ -648,82 +704,102 @@ export default function App() {
           <div className="panel-title">
             <QrCode size={22} />
             <div>
-              <h2>Scan Console</h2>
-              <p>Works with QR now and can accept RFID reader values later.</p>
+              <h2>{canManageBooks ? "Issue Book To Student" : isStudent ? "Issue Book To Me" : "Book Scan"}</h2>
+              {currentUser && <p>Scan a QR code or enter the value manually.</p>}
             </div>
           </div>
 
-          <form className="scan-form" onSubmit={handleScan}>
-            <select value={scanType} onChange={(event) => setScanType(event.target.value as ScanType)}>
-              <option value="QR">QR Code</option>
-              <option value="RFID">RFID Tag</option>
-            </select>
-            <input value={scanValue} onChange={(event) => setScanValue(event.target.value)} />
-            <button type="submit">Resolve Scan</button>
-          </form>
-          <QrScanner
-            label="Open Camera For Book QR"
-            onDetected={(value) => {
-              setScanType("QR");
-              setScanValue(value);
-              void resolveBookScan("QR", value);
-            }}
-          />
+          {!currentUser ? (
+            <div className="empty-state">Sign in to issue books.</div>
+          ) : (
+            <div className="simple-scan-flow">
+              {canManageBooks && (
+                <div className="staff-issue-panel">
+                  <h3>Student</h3>
+                  <p>Enter the student's roll number or scan the student QR.</p>
+                  <div className="staff-issue-grid">
+                    <select
+                      value={staffBorrowerIdentifierType}
+                      onChange={(event) => setStaffBorrowerIdentifierType(event.target.value as IdentifierType)}
+                    >
+                      <option value="ROLL_NUMBER">Student Roll Number</option>
+                      <option value="QR_CREDENTIAL">Student QR</option>
+                    </select>
+                    <input
+                      placeholder="Student roll number or QR value"
+                      value={staffBorrowerIdentifier}
+                      onChange={(event) => setStaffBorrowerIdentifier(event.target.value)}
+                    />
+                  </div>
+                  <QrScanner
+                    label="Scan Student QR"
+                    onDetected={(value) => {
+                      setStaffBorrowerIdentifierType("QR_CREDENTIAL");
+                      setStaffBorrowerIdentifier(value);
+                    }}
+                  />
+                </div>
+              )}
 
-          {canManageBooks && (
-            <div className="staff-issue-panel">
-              <h3>Issue To Student</h3>
-              <p>Enter student roll number, or scan the student QR, then enter or scan the book QR/RFID value.</p>
-              <div className="staff-issue-grid">
-                <select
-                  value={staffBorrowerIdentifierType}
-                  onChange={(event) => setStaffBorrowerIdentifierType(event.target.value as IdentifierType)}
-                >
-                  <option value="ROLL_NUMBER">Student Roll Number</option>
-                  <option value="QR_CREDENTIAL">Student QR</option>
-                </select>
-                <input
-                  placeholder="Student roll number or QR value"
-                  value={staffBorrowerIdentifier}
-                  onChange={(event) => setStaffBorrowerIdentifier(event.target.value)}
+              <div className="staff-issue-panel">
+                <h3>Book Copy</h3>
+                <p>Scan the book QR or enter the QR/RFID value manually.</p>
+                <form className="scan-form" onSubmit={handleScan}>
+                  <select value={scanType} onChange={(event) => setScanType(event.target.value as ScanType)}>
+                    <option value="QR">Book QR</option>
+                    <option value="RFID">RFID Tag</option>
+                  </select>
+                  <input
+                    placeholder="Book QR or RFID value"
+                    value={scanValue}
+                    onChange={(event) => {
+                      setScanValue(event.target.value);
+                      setScanResult(null);
+                    }}
+                  />
+                  <button type="submit">Check Copy</button>
+                </form>
+                <QrScanner
+                  label="Scan Book QR"
+                  onDetected={(value) => {
+                    setScanType("QR");
+                    setScanValue(value);
+                    void resolveBookCopy("QR", value);
+                  }}
                 />
               </div>
-              <QrScanner
-                label="Scan Student QR"
-                onDetected={(value) => {
-                  setStaffBorrowerIdentifierType("QR_CREDENTIAL");
-                  setStaffBorrowerIdentifier(value);
-                }}
-              />
-              <button type="button" onClick={() => void handleStaffIssue()}>
-                Issue To Student
-              </button>
-            </div>
-          )}
 
-          {scanResult ? (
-            <div className="scan-result">
-              <span className="badge">{scanResult.status}</span>
-              <h3>{scanResult.title}</h3>
-              <p>{scanResult.author}</p>
-              <dl>
-                <div>
-                  <dt>Accession</dt>
-                  <dd>{scanResult.accessionNumber}</dd>
-                </div>
-                <div>
-                  <dt>Shelf</dt>
-                  <dd>{scanResult.shelfLocation}</dd>
-                </div>
-              </dl>
-              {isStudent && (
-                <div className="action-row">
-                  <button type="button" onClick={handleIssue}>Issue To Me</button>
+              <div className="action-row">
+                {isStudent && (
+                  <button type="button" onClick={() => void handleIssue()}>
+                    Issue To Me
+                  </button>
+                )}
+                {canManageBooks && (
+                  <button type="button" onClick={() => void handleStaffIssue()}>
+                    Issue To Student
+                  </button>
+                )}
+              </div>
+
+              {scanResult && (
+                <div className="scan-result">
+                  <span className="badge">{scanResult.status}</span>
+                  <h3>{scanResult.title}</h3>
+                  <p>{scanResult.author}</p>
+                  <dl>
+                    <div>
+                      <dt>Accession</dt>
+                      <dd>{scanResult.accessionNumber}</dd>
+                    </div>
+                    <div>
+                      <dt>Shelf</dt>
+                      <dd>{scanResult.shelfLocation}</dd>
+                    </div>
+                  </dl>
                 </div>
               )}
             </div>
-          ) : (
-            <div className="empty-state">Scan a book QR like BOOK-QR-ACC-0001 to resolve a copy.</div>
           )}
         </article>
       </section>
@@ -908,7 +984,7 @@ export default function App() {
             <div className="staff-issue-panel">
               <h3>Remove Existing Copy</h3>
               <p>Enter or scan the exact QR value for the physical copy to remove.</p>
-              <div className="staff-issue-grid">
+              <div className="staff-issue-grid remove-copy-grid">
                 <input
                   placeholder="Example: BOOK-QR-ACC-..."
                   value={bookCopyQrValue}
@@ -946,6 +1022,7 @@ export default function App() {
                   setSelectedUserDetails(null);
                   setSelectedUserIssuedBooks([]);
                   setGeneratedQr(null);
+                  setIsIssuedBooksWindowOpen(false);
                 }}
               >
                 Close
@@ -1008,33 +1085,9 @@ export default function App() {
                     </dl>
 
                     {selectedUserDetails.roles.includes("STUDENT") && (
-                      <div className="issued-list">
-                        <h3>Issued Books</h3>
-                        <div className="total-fine">Total Fine: Rs {selectedUserTotalFine}</div>
-                        {selectedUserIssuedBooks.length === 0 ? (
-                          <p>No books are currently issued to this user.</p>
-                        ) : (
-                          selectedUserIssuedBooks.map((book) => (
-                            <div className="compact-row" key={book.transactionId}>
-                              <div>
-                                <strong>{book.bookTitle}</strong>
-                                <span>
-                                  {book.accessionNumber} · Return by {book.dueOn} · Loan {book.loanPeriodDays} days · {book.overdueDays} overdue days · Rs {book.finePerDay}/day
-                                </span>
-                              </div>
-                              <div className="compact-actions">
-                                <span className="availability">Fine Rs {book.fineAmount}</span>
-                                <button type="button" onClick={() => void handleRenewIssuedBook(book)}>
-                                  Renew
-                                </button>
-                                <button type="button" className="danger-button" onClick={() => void handleReturnIssuedBook(book)}>
-                                  Return
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                      <button type="button" className="secondary-button view-issued-button" onClick={() => void handleOpenIssuedBooks()}>
+                        View Issued Books
+                      </button>
                     )}
                   </div>
                 ) : (
@@ -1052,6 +1105,49 @@ export default function App() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isIssuedBooksWindowOpen && selectedUserDetails && (
+        <div className="modal-backdrop secondary-modal" role="dialog" aria-modal="true" aria-label="Issued books">
+          <div className="modal-panel issued-books-window">
+            <div className="modal-header">
+              <div>
+                <h2>Issued Books</h2>
+                <p>{selectedUserDetails.fullName}</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setIsIssuedBooksWindowOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            <div className="issued-list">
+              <div className="total-fine">Total Fine: Rs {selectedUserTotalFine}</div>
+              {selectedUserIssuedBooks.length === 0 ? (
+                <p>No books are currently issued to this user.</p>
+              ) : (
+                selectedUserIssuedBooks.map((book) => (
+                  <div className="compact-row" key={book.transactionId}>
+                    <div>
+                      <strong>{book.bookTitle}</strong>
+                      <span>
+                        {book.accessionNumber} · Return by {book.dueOn} · Loan {book.loanPeriodDays} days · {book.overdueDays} overdue days · Rs {book.finePerDay}/day
+                      </span>
+                    </div>
+                    <div className="compact-actions">
+                      <span className="availability">Fine Rs {book.fineAmount}</span>
+                      <button type="button" onClick={() => void handleRenewIssuedBook(book)}>
+                        Renew
+                      </button>
+                      <button type="button" className="danger-button" onClick={() => void handleReturnIssuedBook(book)}>
+                        Return
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
