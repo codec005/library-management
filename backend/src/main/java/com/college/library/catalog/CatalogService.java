@@ -1,0 +1,16 @@
+package com.college.library.catalog;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+public interface CatalogService {
+
+    List<BookSummary> searchBooks(String query);
+
+    Optional<BookCopyScanResponse> scanCopy(ScanType type, String value);
+
+    BookSummary addBook(BookCreateRequest request, UUID actorUserId);
+
+    void removeBook(UUID bookId, UUID actorUserId);
+}

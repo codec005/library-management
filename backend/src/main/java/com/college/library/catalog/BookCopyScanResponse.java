@@ -1,0 +1,23 @@
+package com.college.library.catalog;
+
+import java.util.UUID;
+
+public record BookCopyScanResponse(
+    UUID copyId,
+    String accessionNumber,
+    String title,
+    String author,
+    String shelfLocation,
+    BookCopyStatus status
+) {
+    static BookCopyScanResponse from(BookCopy copy) {
+        return new BookCopyScanResponse(
+            copy.getId(),
+            copy.getAccessionNumber(),
+            copy.getBook().getTitle(),
+            copy.getBook().getAuthor(),
+            copy.getShelfLocation(),
+            copy.getStatus()
+        );
+    }
+}

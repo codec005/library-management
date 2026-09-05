@@ -1,0 +1,58 @@
+package com.college.library.catalog;
+
+import java.util.List;
+import java.util.UUID;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/catalog")
+public class CatalogController {
+
+    private static final String ACTOR_HEADER = "X-Actor-User-Id";
+
+    private final CatalogService catalogService;
+
+    public CatalogController(CatalogService catalogService) {
+        this.catalogService = catalogService;
+    }
+
+    @GetMapping("/books")
+    ResponseEntity<List<BookSummary>> searchBooks(@RequestParam(defaultValue = "") String query) {
+        return ResponseEntity.ok(catalogService.searchBooks(query));
+    }
+
+    @GetMapping("/scan")
+    ResponseEntity<BookCopyScanResponse> scanCopy(@RequestParam ScanType type, @RequestParam String value) {
+        return catalogService.scanCopy(type, value)
+            .map(ResponseEntity::ok)
+            .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/books")
+    ResponseEntity<BookSummary> addBook(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @Valid @RequestBody BookCreateRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(catalogService.addBook(request, actorUserId));
+    }
+
+    @DeleteMapping("/books/{bookId}")
+    ResponseEntity<Void> removeBook(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @PathVariable UUID bookId
+    ) {
+        catalogService.removeBook(bookId, actorUserId);
+        return ResponseEntity.noContent().build();
+    }
+}
