@@ -346,6 +346,14 @@ sudo systemctl enable mariadb
 sudo mariadb
 ```
 
+If you see this error:
+
+```text
+ERROR 1698 (28000): Access denied for user 'root'@'localhost'
+```
+
+Use `sudo mariadb` instead of `mariadb -u root`. On many Linux installations, MariaDB root login uses the system `root` user through socket authentication.
+
 Windows:
 
 Install MariaDB from [https://mariadb.org/download](https://mariadb.org/download), then open the MariaDB client.
