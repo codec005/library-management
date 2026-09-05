@@ -628,7 +628,7 @@ export default function App() {
                 <div>
                   <strong>{book.title}</strong>
                   <span>
-                    {book.author} · {book.category} · Fine Rs {book.finePerDay}/day · Return in {book.loanPeriodDays} days
+                    {book.author} · {book.category}
                   </span>
                 </div>
                 <div className="book-actions">
