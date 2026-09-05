@@ -339,8 +339,10 @@ mariadb -u root
 Ubuntu/Debian Linux:
 
 ```bash
+sudo apt update
 sudo apt install -y mariadb-server
 sudo systemctl start mariadb
+sudo systemctl enable mariadb
 sudo mariadb
 ```
 
@@ -355,9 +357,21 @@ CREATE DATABASE library_management;
 CREATE USER 'library_user'@'localhost' IDENTIFIED BY 'library_password';
 GRANT ALL PRIVILEGES ON library_management.* TO 'library_user'@'localhost';
 FLUSH PRIVILEGES;
+EXIT;
 ```
 
-Then run the backend with the `mariadb` profile as shown above.
+Then run the backend with the `mariadb` profile:
+
+```bash
+cd backend
+mvn spring-boot:run -Dspring-boot.run.profiles=mariadb
+```
+
+With the database/user/password above, the default `application-mariadb.yml` values work without code changes:
+
+```text
+jdbc:mariadb://localhost:3306/library_management
+```
 
 ## Demo Accounts
 
