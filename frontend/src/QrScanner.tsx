@@ -1,21 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, X } from "lucide-react";
-
-interface BarcodeDetectorResult {
-  rawValue: string;
-}
-
-interface BarcodeDetectorInstance {
-  detect(source: HTMLVideoElement): Promise<BarcodeDetectorResult[]>;
-}
-
-interface BarcodeDetectorConstructor {
-  new (options: { formats: string[] }): BarcodeDetectorInstance;
-}
-
-interface WindowWithBarcodeDetector extends Window {
-  BarcodeDetector?: BarcodeDetectorConstructor;
-}
+import { BrowserQRCodeReader, IScannerControls } from "@zxing/browser";
 
 interface QrScannerProps {
   label: string;
@@ -24,8 +9,7 @@ interface QrScannerProps {
 
 export default function QrScanner({ label, onDetected }: QrScannerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const frameRef = useRef<number | null>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -38,33 +22,24 @@ export default function QrScanner({ label, onDetected }: QrScannerProps) {
     let cancelled = false;
 
     async function startCamera() {
-      const barcodeDetector = (window as WindowWithBarcodeDetector).BarcodeDetector;
-
-      if (!barcodeDetector) {
-        setMessage("QR camera scanning is not supported in this browser. Use Chrome or enter the QR value manually.");
+      if (!videoRef.current) {
         return;
       }
 
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false
+        const reader = new BrowserQRCodeReader();
+        controlsRef.current = await reader.decodeFromVideoDevice(undefined, videoRef.current, (result) => {
+          if (!result || cancelled) {
+            return;
+          }
+
+          const qrValue = result.getText();
+          onDetected(qrValue);
+          setMessage(`QR detected: ${qrValue}`);
+          setIsOpen(false);
         });
-
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-
-        streamRef.current = stream;
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          scanLoop(new barcodeDetector({ formats: ["qr_code"] }));
-        }
       } catch {
-        setMessage("Camera permission was denied or no camera was found.");
+        setMessage("Camera permission was denied, no camera was found, or this page is not opened over HTTPS.");
       }
     }
 
@@ -77,37 +52,8 @@ export default function QrScanner({ label, onDetected }: QrScannerProps) {
   }, [isOpen]);
 
   function stopCamera() {
-    if (frameRef.current) {
-      cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-    }
-
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-  }
-
-  async function scanLoop(detector: BarcodeDetectorInstance) {
-    if (!videoRef.current) {
-      return;
-    }
-
-    try {
-      const results = await detector.detect(videoRef.current);
-      const qrValue = results[0]?.rawValue;
-
-      if (qrValue) {
-        onDetected(qrValue);
-        setMessage(`QR detected: ${qrValue}`);
-        setIsOpen(false);
-        return;
-      }
-    } catch {
-      setMessage("Unable to scan this frame. Keep the QR code steady and well lit.");
-    }
-
-    frameRef.current = requestAnimationFrame(() => {
-      void scanLoop(detector);
-    });
+    controlsRef.current?.stop();
+    controlsRef.current = null;
   }
 
   return (

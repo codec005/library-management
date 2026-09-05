@@ -134,7 +134,111 @@ npm run dev
 
 Open `http://localhost:5173`.
 
-### 4. Run With MariaDB
+### 4. Access From Another Device On Your Network
+
+Start the frontend on all network interfaces:
+
+```bash
+cd frontend
+npm run dev -- --host 0.0.0.0
+```
+
+Find your computer's local IP address.
+
+macOS:
+
+```bash
+ipconfig getifaddr en0
+```
+
+Linux:
+
+```bash
+hostname -I
+```
+
+Windows PowerShell:
+
+```powershell
+ipconfig
+```
+
+Open this URL from another phone or laptop on the same Wi-Fi:
+
+```text
+http://YOUR_LOCAL_IP:5173
+```
+
+Example:
+
+```text
+http://192.168.1.25:5173
+```
+
+Camera QR scanning usually will not work from another device over plain HTTP. Browsers require a secure context for camera access, which means `localhost` or HTTPS.
+
+### 5. Enable Camera Scanning From Another Device
+
+Use HTTPS for the Vite frontend when testing camera QR scanning on another device.
+
+macOS:
+
+```bash
+brew install mkcert nss
+mkcert -install
+mkdir -p certs
+mkcert -key-file certs/library-local-key.pem -cert-file certs/library-local-cert.pem localhost 127.0.0.1 YOUR_LOCAL_IP
+```
+
+Linux:
+
+```bash
+sudo apt install -y mkcert libnss3-tools
+mkcert -install
+mkdir -p certs
+mkcert -key-file certs/library-local-key.pem -cert-file certs/library-local-cert.pem localhost 127.0.0.1 YOUR_LOCAL_IP
+```
+
+On Linux, if your package manager does not include `mkcert`, install it from [https://github.com/FiloSottile/mkcert](https://github.com/FiloSottile/mkcert).
+
+Windows PowerShell:
+
+```powershell
+winget install FiloSottile.mkcert
+mkcert -install
+mkdir certs
+mkcert -key-file certs/library-local-key.pem -cert-file certs/library-local-cert.pem localhost 127.0.0.1 YOUR_LOCAL_IP
+```
+
+Replace `YOUR_LOCAL_IP` with your actual local IP, for example `192.168.1.25`.
+
+Start the HTTPS frontend.
+
+macOS/Linux:
+
+```bash
+cd frontend
+VITE_HTTPS_KEY=../certs/library-local-key.pem VITE_HTTPS_CERT=../certs/library-local-cert.pem npm run dev
+```
+
+Windows PowerShell:
+
+```powershell
+cd frontend
+$env:VITE_HTTPS_KEY="../certs/library-local-key.pem"
+$env:VITE_HTTPS_CERT="../certs/library-local-cert.pem"
+npm run dev
+```
+
+Then open:
+
+```text
+https://YOUR_LOCAL_IP:5173
+```
+
+If the phone still blocks the camera, install/trust the mkcert root certificate on that device, or use a real HTTPS deployment.
+
+### 6. Run With MariaDB
 
 The easiest MariaDB setup is Docker.
 
@@ -191,7 +295,7 @@ cd backend
 mvn spring-boot:run "-Dspring-boot.run.profiles=mariadb"
 ```
 
-### 5. Optional Local MariaDB Without Docker
+### 7. Optional Local MariaDB Without Docker
 
 macOS:
 
