@@ -206,6 +206,13 @@ export function getUserDetails(userId: string, actorUserId: string) {
   });
 }
 
+export function getStudentDetailsByIdentifier(identifierType: IdentifierType, identifier: string, actorUserId: string) {
+  const params = new URLSearchParams({ type: identifierType, value: identifier });
+  return request<UserDetailsResponse>(`/api/users/by-identifier?${params.toString()}`, {
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
 export function scanBookCopy(type: ScanType, value: string) {
   return request<BookCopyScanResponse>(`/api/catalog/scan?type=${type}&value=${encodeURIComponent(value)}`);
 }

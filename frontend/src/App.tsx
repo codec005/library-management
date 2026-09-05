@@ -15,6 +15,7 @@ import {
   UserRegistrationRequest,
   UserSummary,
   addBook,
+  getStudentDetailsByIdentifier,
   getUserQrCredential,
   getUserDetails,
   issueBookByIdentifier,
@@ -43,11 +44,15 @@ export default function App() {
   const [collegeName, setCollegeName] = useState(() => localStorage.getItem("collegeName") ?? "");
   const [query, setQuery] = useState("");
   const [books, setBooks] = useState<BookSummary[]>([]);
+  const [isCatalogWindowOpen, setIsCatalogWindowOpen] = useState(false);
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogBooks, setCatalogBooks] = useState<BookSummary[]>([]);
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [scanType, setScanType] = useState<ScanType>("QR");
   const [scanValue, setScanValue] = useState("");
   const [staffBorrowerIdentifierType, setStaffBorrowerIdentifierType] = useState<IdentifierType>("ROLL_NUMBER");
   const [staffBorrowerIdentifier, setStaffBorrowerIdentifier] = useState("");
+  const [checkedStudent, setCheckedStudent] = useState<UserDetailsResponse | null>(null);
   const [scanResult, setScanResult] = useState<BookCopyScanResponse | null>(null);
   const [myProfile, setMyProfile] = useState<UserDetailsResponse | null>(null);
   const [myIssuedBooks, setMyIssuedBooks] = useState<CirculationResponse[]>([]);
@@ -99,10 +104,14 @@ export default function App() {
   const canManageCollegeBranding = currentUser?.roles.some((role) => ["ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canShowUserRegistration = canManageStudents || canManageLibrarians;
   const canShowManagement = canShowUserRegistration || canManageBooks;
+  const staffIssueStudentValue = staffBorrowerIdentifier.trim();
+  const staffIssueBookValue = scanValue.trim();
+  const isStaffIssueReady = canManageBooks && staffIssueStudentValue.length > 0 && staffIssueBookValue.length > 0;
   const visibleManagedUsers = useMemo(
     () => users.filter((user) => canManageLibrarians || user.roles.includes("STUDENT")),
     [canManageLibrarians, users]
   );
+  const visibleCatalogBooks = useMemo(() => books.slice(0, 4), [books]);
   const myTotalFine = useMemo(
     () => myIssuedBooks.reduce((total, book) => total + book.fineAmount, 0),
     [myIssuedBooks]
@@ -195,6 +204,33 @@ export default function App() {
     setBooks(await searchBooks(query));
   }
 
+  async function handleOpenCatalogWindow() {
+    try {
+      setCatalogQuery(query);
+      setCatalogBooks(await searchBooks(query));
+      setIsCatalogWindowOpen(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to open catalog.");
+    }
+  }
+
+  async function handleCatalogWindowSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      setCatalogBooks(await searchBooks(catalogQuery));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Catalog search failed.");
+    }
+  }
+
+  function formatIdentifierLabel(type: IdentifierType, roles: string[]) {
+    if (type === "ROLL_NUMBER") {
+      return roles.includes("STUDENT") ? "Roll Number" : "Staff Code";
+    }
+
+    return type.replace(/_/g, " ");
+  }
+
   async function handleUserScanLogin(value = userScanValue) {
     setMessage("");
 
@@ -258,8 +294,16 @@ export default function App() {
       return;
     }
 
-    if (!staffBorrowerIdentifier || !scanValue) {
-      setMessage("Enter or scan both student details and book QR/RFID value.");
+    const borrowerIdentifier = staffBorrowerIdentifier.trim();
+    const bookScanValue = scanValue.trim();
+
+    if (!borrowerIdentifier) {
+      setMessage("Enter the student's roll number or scan the student QR first.");
+      return;
+    }
+
+    if (!bookScanValue) {
+      setMessage("Enter or scan the book copy QR/RFID value before issuing.");
       return;
     }
 
@@ -267,10 +311,12 @@ export default function App() {
       const transaction = await issueBookByIdentifier(
         currentUser.userId,
         staffBorrowerIdentifierType,
-        staffBorrowerIdentifier,
+        borrowerIdentifier,
         scanType,
-        scanValue
+        bookScanValue
       );
+      setStaffBorrowerIdentifier(borrowerIdentifier);
+      setScanValue(bookScanValue);
       setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName}. Return by ${transaction.dueOn}.`);
       setBooks(await searchBooks(query));
       if (selectedUserDetails) {
@@ -278,6 +324,36 @@ export default function App() {
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Issue to student failed.");
+    }
+  }
+
+  async function handleCheckStudent() {
+    if (!currentUser) {
+      setMessage("Sign in as librarian or admin to check a student.");
+      return;
+    }
+
+    const borrowerIdentifier = staffBorrowerIdentifier.trim();
+
+    if (!borrowerIdentifier) {
+      setMessage("Enter the student's roll number or scan the student QR first.");
+      return;
+    }
+
+    try {
+      const student = await getStudentDetailsByIdentifier(
+        staffBorrowerIdentifierType,
+        borrowerIdentifier,
+        currentUser.userId
+      );
+      setCheckedStudent(student);
+      setSelectedUserDetails(student);
+      setSelectedUserIssuedBooks(await listIssuedBooksForUser(student.id, currentUser.userId));
+      setStaffBorrowerIdentifier(borrowerIdentifier);
+      setMessage(`Student found: ${student.fullName}.`);
+    } catch (error) {
+      setCheckedStudent(null);
+      setMessage(error instanceof Error ? error.message : "Student check failed.");
     }
   }
 
@@ -560,7 +636,27 @@ export default function App() {
         </div>
       </header>
 
-      {message && <p className="status-message">{message}</p>}
+      {message && (
+        <div className="modal-backdrop message-backdrop" role="dialog" aria-modal="true" aria-label="Portal message">
+          <div className="modal-panel message-dialog">
+            <div className="modal-header">
+              <div>
+                <h2>Message</h2>
+                <p>Library portal update</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setMessage("")}>
+                Close
+              </button>
+            </div>
+            <p className="message-dialog-text">{message}</p>
+            <div className="action-row">
+              <button type="button" onClick={() => setMessage("")}>
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className="portal-grid">
         {currentUser && myProfile && (
@@ -582,9 +678,9 @@ export default function App() {
                 <dt>Role</dt>
                 <dd>{myProfile.roles.join(", ")}</dd>
               </div>
-              {myProfile.identifiers.map((identifierItem) => (
+              {myProfile.identifiers.filter((identifierItem) => identifierItem.type === "ROLL_NUMBER").map((identifierItem) => (
                 <div key={`${identifierItem.type}-${identifierItem.value}`}>
-                  <dt>{identifierItem.type.replace(/_/g, " ")}</dt>
+                  <dt>{formatIdentifierLabel(identifierItem.type, myProfile.roles)}</dt>
                   <dd>{identifierItem.value}</dd>
                 </div>
               ))}
@@ -683,7 +779,7 @@ export default function App() {
           </form>
 
           <div className="book-list">
-            {books.map((book) => (
+            {visibleCatalogBooks.map((book) => (
               <div className="book-row" key={book.id}>
                 <div>
                   <strong>{book.title}</strong>
@@ -697,6 +793,14 @@ export default function App() {
               </div>
             ))}
           </div>
+
+          {books.length > 4 && (
+            <p className="list-note">Showing first 4 of {books.length} books.</p>
+          )}
+
+          <button type="button" className="secondary-button directory-button" onClick={() => void handleOpenCatalogWindow()}>
+            Open Full Catalogue
+          </button>
 
         </article>
 
@@ -716,11 +820,14 @@ export default function App() {
               {canManageBooks && (
                 <div className="staff-issue-panel">
                   <h3>Student</h3>
-                  <p>Enter the student's roll number or scan the student QR.</p>
+                  <p>Step 1: Enter the student's roll number or scan the student QR.</p>
                   <div className="staff-issue-grid">
                     <select
                       value={staffBorrowerIdentifierType}
-                      onChange={(event) => setStaffBorrowerIdentifierType(event.target.value as IdentifierType)}
+                      onChange={(event) => {
+                        setStaffBorrowerIdentifierType(event.target.value as IdentifierType);
+                        setCheckedStudent(null);
+                      }}
                     >
                       <option value="ROLL_NUMBER">Student Roll Number</option>
                       <option value="QR_CREDENTIAL">Student QR</option>
@@ -728,22 +835,35 @@ export default function App() {
                     <input
                       placeholder="Student roll number or QR value"
                       value={staffBorrowerIdentifier}
-                      onChange={(event) => setStaffBorrowerIdentifier(event.target.value)}
+                      onChange={(event) => {
+                        setStaffBorrowerIdentifier(event.target.value);
+                        setCheckedStudent(null);
+                      }}
                     />
+                    <button type="button" disabled={!staffIssueStudentValue} onClick={() => void handleCheckStudent()}>
+                      Check Student
+                    </button>
                   </div>
                   <QrScanner
                     label="Scan Student QR"
                     onDetected={(value) => {
                       setStaffBorrowerIdentifierType("QR_CREDENTIAL");
                       setStaffBorrowerIdentifier(value);
+                      setCheckedStudent(null);
                     }}
                   />
+                  {checkedStudent && (
+                    <div className="checked-student-card">
+                      <strong>{checkedStudent.fullName}</strong>
+                      <span>{checkedStudent.department} · Roll Number {checkedStudent.identifiers.find((item) => item.type === "ROLL_NUMBER")?.value ?? "Not set"}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
               <div className="staff-issue-panel">
                 <h3>Book Copy</h3>
-                <p>Scan the book QR or enter the QR/RFID value manually.</p>
+                <p>Step 2: Scan the book QR or enter the book QR/RFID value manually.</p>
                 <form className="scan-form" onSubmit={handleScan}>
                   <select value={scanType} onChange={(event) => setScanType(event.target.value as ScanType)}>
                     <option value="QR">Book QR</option>
@@ -776,11 +896,14 @@ export default function App() {
                   </button>
                 )}
                 {canManageBooks && (
-                  <button type="button" onClick={() => void handleStaffIssue()}>
+                  <button type="button" disabled={!isStaffIssueReady} onClick={() => void handleStaffIssue()}>
                     Issue To Student
                   </button>
                 )}
               </div>
+              {canManageBooks && !isStaffIssueReady && (
+                <p className="issue-hint">Enter the student roll number and the book copy QR/RFID value to issue.</p>
+              )}
 
               {scanResult && (
                 <div className="scan-result">
@@ -1006,6 +1129,50 @@ export default function App() {
       </section>
       )}
 
+      {isCatalogWindowOpen && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Full catalogue">
+          <div className="modal-panel full-catalog-window">
+            <div className="modal-header">
+              <div>
+                <h2>Full Catalogue</h2>
+                <p>Search and view all catalog entries.</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setIsCatalogWindowOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            <form className="inline-form" onSubmit={handleCatalogWindowSearch}>
+              <Search size={18} />
+              <input
+                placeholder="Search books"
+                value={catalogQuery}
+                onChange={(event) => setCatalogQuery(event.target.value)}
+              />
+              <button type="submit">Search</button>
+            </form>
+
+            <div className="book-list">
+              {catalogBooks.length === 0 ? (
+                <div className="empty-state">No books found.</div>
+              ) : (
+                catalogBooks.map((book) => (
+                  <div className="book-row" key={book.id}>
+                    <div>
+                      <strong>{book.title}</strong>
+                      <span>{book.author} · {book.category}</span>
+                    </div>
+                    <div className="book-actions">
+                      <span className="availability">{book.availableCopies}/{book.totalCopies} available</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {canManageStudents && isUserDirectoryOpen && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="User directory">
           <div className="modal-panel">
@@ -1076,9 +1243,9 @@ export default function App() {
                         <dt>Role</dt>
                         <dd>{selectedUserDetails.roles.join(", ")}</dd>
                       </div>
-                      {selectedUserDetails.identifiers.map((identifierItem) => (
+                      {selectedUserDetails.identifiers.filter((identifierItem) => identifierItem.type === "ROLL_NUMBER").map((identifierItem) => (
                         <div key={`${identifierItem.type}-${identifierItem.value}`}>
-                          <dt>{identifierItem.type.replace(/_/g, " ")}</dt>
+                          <dt>{formatIdentifierLabel(identifierItem.type, selectedUserDetails.roles)}</dt>
                           <dd>{identifierItem.value}</dd>
                         </div>
                       ))}

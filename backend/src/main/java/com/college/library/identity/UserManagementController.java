@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -28,6 +29,15 @@ public class UserManagementController {
     @GetMapping
     ResponseEntity<List<UserSummary>> listUsers() {
         return ResponseEntity.ok(userManagementUseCase.listUsers());
+    }
+
+    @GetMapping("/by-identifier")
+    ResponseEntity<UserDetailsResponse> getStudentDetailsByIdentifier(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @RequestParam IdentifierType type,
+        @RequestParam String value
+    ) {
+        return ResponseEntity.ok(userManagementUseCase.getStudentDetailsByIdentifier(type, value, actorUserId));
     }
 
     @GetMapping("/{userId}")

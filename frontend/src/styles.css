@@ -38,6 +38,12 @@ button:hover {
   background: #1e40af;
 }
 
+button:disabled {
+  background: #c7d3e3;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
 button svg {
   vertical-align: middle;
 }
@@ -324,6 +330,26 @@ label {
   padding: 1rem 1.25rem;
 }
 
+.modal-backdrop.message-backdrop {
+  z-index: 100;
+}
+
+.app-shell > .modal-backdrop.message-backdrop {
+  z-index: 100;
+}
+
+.message-dialog {
+  max-width: 520px;
+}
+
+.message-dialog-text {
+  color: #152033;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.55;
+  margin: 1.25rem 0 0;
+}
+
 .panel-title svg {
   color: #52627a;
 }
@@ -415,6 +441,13 @@ label {
 .book-list {
   display: grid;
   gap: 0.75rem;
+}
+
+.list-note {
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0.8rem 0 0;
 }
 
 .book-row {
@@ -684,6 +717,12 @@ label {
   line-height: 1.5;
 }
 
+.issue-hint {
+  color: #64748b;
+  font-size: 0.92rem;
+  margin: -0.25rem 0 0.25rem;
+}
+
 .modal-backdrop {
   align-items: center;
   background: rgba(15, 23, 42, 0.58);
@@ -747,12 +786,26 @@ label {
 .staff-issue-grid {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) auto;
 }
 
 .scan-form > *,
 .staff-issue-grid > * {
   min-width: 0;
+}
+
+.checked-student-card {
+  background: #ffffff;
+  border: 1px solid #c7d3e3;
+  border-radius: 14px;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.checked-student-card span {
+  color: #64748b;
+  font-size: 0.9rem;
 }
 
 .remove-copy-grid {
@@ -766,6 +819,10 @@ label {
 
 .issued-books-window {
   max-width: 860px;
+}
+
+.full-catalog-window {
+  max-width: 920px;
 }
 
 .issued-books-window .compact-row {

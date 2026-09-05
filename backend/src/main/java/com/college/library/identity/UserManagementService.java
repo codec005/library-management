@@ -151,6 +151,27 @@ public class UserManagementService implements UserManagementUseCase {
 
     @Override
     @Transactional(readOnly = true)
+    public UserDetailsResponse getStudentDetailsByIdentifier(IdentifierType identifierType, String identifier, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+
+        if (!hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only librarian or admin can check students");
+        }
+
+        UserAccount user = userIdentifierRepository.findByTypeAndValue(identifierType, cleanValue(identifier))
+            .filter(userIdentifier -> userIdentifier.getUser().isActive())
+            .orElseThrow(() -> new IllegalArgumentException("Student not found for the entered identifier"))
+            .getUser();
+
+        if (!user.getRoles().contains(UserRole.STUDENT)) {
+            throw new IllegalStateException("The entered identifier does not belong to a student");
+        }
+
+        return UserDetailsResponse.from(user);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<UserSummary> listUsers() {
         return userAccountRepository.findAll().stream()
             .filter(UserAccount::isActive)
@@ -180,6 +201,10 @@ public class UserManagementService implements UserManagementUseCase {
             .ifPresent(identifier -> {
                 throw new IllegalStateException(type + " already exists");
             });
+    }
+
+    private String cleanValue(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private UserIdentifier createQrCredential(UserAccount user) {

@@ -17,5 +17,7 @@ public interface UserManagementUseCase {
 
     UserDetailsResponse getUserDetails(UUID userId, UUID actorUserId);
 
+    UserDetailsResponse getStudentDetailsByIdentifier(IdentifierType identifierType, String identifier, UUID actorUserId);
+
     List<UserSummary> listUsers();
 }

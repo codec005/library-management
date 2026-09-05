@@ -59,11 +59,14 @@ public class CirculationService implements CirculationUseCase {
         UserAccount actor = userAccountRepository.findById(actorUserId)
             .filter(UserAccount::isActive)
             .orElseThrow(() -> new IllegalArgumentException("Actor user not found"));
+        String borrowerIdentifier = cleanValue(request.borrowerIdentifier());
+        String bookScanValue = cleanValue(request.bookScanValue());
         UserAccount borrower = userIdentifierRepository
-            .findByTypeAndValue(request.borrowerIdentifierType(), request.borrowerIdentifier())
-            .orElseThrow(() -> new IllegalArgumentException("Borrower not found"))
+            .findByTypeAndValue(request.borrowerIdentifierType(), borrowerIdentifier)
+            .filter(identifier -> identifier.getUser().isActive())
+            .orElseThrow(() -> new IllegalArgumentException("Student not found for the entered identifier"))
             .getUser();
-        BookCopy copy = resolveBookCopy(request.bookScanType(), request.bookScanValue());
+        BookCopy copy = resolveBookCopy(request.bookScanType(), bookScanValue);
 
         boolean studentSelfIssue = actor.getId().equals(borrower.getId()) && borrower.getRoles().contains(UserRole.STUDENT);
         boolean staffIssue = borrower.getRoles().contains(UserRole.STUDENT)
@@ -74,6 +77,10 @@ public class CirculationService implements CirculationUseCase {
         }
 
         return issueCopyToBorrower(copy, borrower);
+    }
+
+    private String cleanValue(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private CirculationResponse issueCopyToBorrower(BookCopy copy, UserAccount borrower) {
