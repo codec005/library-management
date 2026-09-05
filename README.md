@@ -218,7 +218,7 @@ macOS/Linux:
 
 ```bash
 cd frontend
-VITE_HTTPS_KEY=../certs/library-local-key.pem VITE_HTTPS_CERT=../certs/library-local-cert.pem npm run dev
+VITE_HTTPS_KEY=../certs/library-local-key.pem VITE_HTTPS_CERT=../certs/library-local-cert.pem npm run dev -- --host 0.0.0.0 --port 5174
 ```
 
 Windows PowerShell:
@@ -227,7 +227,7 @@ Windows PowerShell:
 cd frontend
 $env:VITE_HTTPS_KEY="../certs/library-local-key.pem"
 $env:VITE_HTTPS_CERT="../certs/library-local-cert.pem"
-npm run dev
+npm run dev -- --host 0.0.0.0 --port 5174
 ```
 
 Then open:
