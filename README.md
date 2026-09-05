@@ -233,12 +233,43 @@ npm run dev -- --host 0.0.0.0 --port 5174
 Then open:
 
 ```text
-https://YOUR_LOCAL_IP:5173
+https://YOUR_LOCAL_IP:5174
 ```
 
 If the phone still blocks the camera, install/trust the mkcert root certificate on that device, or use a real HTTPS deployment.
 
-### 6. Run With MariaDB
+### 6. Common Setup Issues
+
+If you see `sh: 1: vite: not found`, install frontend dependencies on the machine where you are running the frontend:
+
+```bash
+cd frontend
+npm install --cache ../.npm-cache
+```
+
+Then run the dev server again:
+
+```bash
+VITE_HTTPS_KEY=../certs/library-local-key.pem VITE_HTTPS_CERT=../certs/library-local-cert.pem npm run dev -- --host 0.0.0.0 --port 5174
+```
+
+If the frontend runs on one computer and the backend runs on another computer, the default Vite proxy will not work because it points to `localhost:8080` on the frontend computer. The simplest setup is to run backend and frontend on the same machine.
+
+If you want to split them across machines, update the frontend proxy target in `frontend/vite.config.ts` from:
+
+```ts
+"/api": "http://localhost:8080"
+```
+
+to:
+
+```ts
+"/api": "http://BACKEND_MACHINE_IP:8080"
+```
+
+Then restart the frontend dev server.
+
+### 7. Run With MariaDB
 
 The easiest MariaDB setup is Docker.
 
@@ -295,7 +326,7 @@ cd backend
 mvn spring-boot:run "-Dspring-boot.run.profiles=mariadb"
 ```
 
-### 7. Optional Local MariaDB Without Docker
+### 8. Optional Local MariaDB Without Docker
 
 macOS:
 
