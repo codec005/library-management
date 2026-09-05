@@ -83,7 +83,7 @@ export default function App() {
   const activeRole = useMemo(() => currentUser?.roles[0] ?? "Guest", [currentUser]);
   const loginIdentifierLabel = useMemo(() => {
     const labels: Record<IdentifierType, string> = {
-      ROLL_NUMBER: "Roll Number",
+      ROLL_NUMBER: "Staff Code",
       COLLEGE_EMAIL: "College Email",
       PHONE_NUMBER: "Phone Number",
       QR_CREDENTIAL: "QR Credential",
@@ -627,7 +627,7 @@ export default function App() {
           <label>
             Login Method
             <select value={identifierType} onChange={(event) => setIdentifierType(event.target.value as IdentifierType)}>
-              <option value="ROLL_NUMBER">Roll Number</option>
+              <option value="ROLL_NUMBER">Staff Code</option>
               <option value="COLLEGE_EMAIL">College Email</option>
             </select>
           </label>

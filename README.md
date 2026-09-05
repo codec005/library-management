@@ -385,8 +385,8 @@ jdbc:mariadb://localhost:3306/library_management
 
 Admin:
 
-- Identifier type: `ROLL_NUMBER`
-- Identifier: `ADMIN001`
+- Login method: `Staff Code`
+- Staff code: `ADMIN001`
 - Password: `admin123`
 - User QR credential: `USER-QR-ADMIN001`
 
