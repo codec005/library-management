@@ -25,4 +25,4 @@ server:
 
 app:
   security:
-    allowed-origins: http://localhost:5173
+    allowed-origins: "http://localhost:5173,https://localhost:5173,https://127.0.0.1:5173,https://192.168.*.*:5173,https://10.*.*.*:5173,https://172.*.*.*:5173,https://localhost:5174,https://127.0.0.1:5174,https://192.168.*.*:5174,https://10.*.*.*:5174,https://172.*.*.*:5174"
