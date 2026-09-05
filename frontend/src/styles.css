@@ -98,6 +98,13 @@ label {
   width: 58px;
 }
 
+.college-mark img {
+  border-radius: inherit;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
 .eyebrow {
   color: #1d4ed8;
   font-size: 0.85rem;
@@ -116,6 +123,24 @@ label {
 .header-subtitle {
   color: #64748b;
   margin: 0.4rem 0 0;
+}
+
+.logo-upload {
+  align-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  color: #1d4ed8;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 800;
+  margin-top: 0.8rem;
+  padding: 0.45rem 0.75rem;
+}
+
+.logo-upload input {
+  display: none;
 }
 
 .login-card,
@@ -149,17 +174,6 @@ label {
 .panel-title p {
   color: #6b778a;
   margin: 0.2rem 0 0;
-}
-
-.demo-accounts {
-  display: grid;
-  gap: 0.6rem;
-  grid-template-columns: repeat(2, 1fr);
-}
-
-.demo-accounts button {
-  background: #e8efff;
-  color: #1d4ed8;
 }
 
 .scan-login {
@@ -268,6 +282,36 @@ label {
   box-shadow: 0 20px 55px rgba(29, 78, 216, 0.13);
 }
 
+.profile-panel {
+  border-color: #bbf7d0;
+}
+
+.details-list {
+  display: grid;
+  gap: 0.7rem;
+  margin: 1rem 0 0;
+}
+
+.details-list div {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 0.75rem;
+}
+
+.details-list dt {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.details-list dd {
+  font-weight: 800;
+  margin: 0.2rem 0 0;
+  word-break: break-word;
+}
+
 .inline-form,
 .scan-form {
   align-items: center;
@@ -347,7 +391,8 @@ label {
 }
 
 .management-form,
-.user-list {
+.user-list,
+.issued-list {
   display: grid;
   gap: 0.75rem;
   margin-top: 1.2rem;
@@ -361,8 +406,48 @@ label {
   grid-column: 1 / -1;
 }
 
+.inline-checkbox {
+  align-items: center;
+  flex-direction: row;
+  gap: 0.5rem;
+}
+
+.inline-checkbox input {
+  width: auto;
+}
+
 .user-list h3 {
   margin: 0.5rem 0 0;
+}
+
+.issued-list h3 {
+  margin: 0;
+}
+
+.issued-list p {
+  color: #64748b;
+  margin: 0;
+}
+
+.total-fine {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 14px;
+  color: #9a3412;
+  font-weight: 900;
+  padding: 0.75rem;
+}
+
+.student-detail-card {
+  background: #f8fafc;
+  border: 1px solid #dbeafe;
+  border-radius: 18px;
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.student-detail-card h3 {
+  margin: 0;
 }
 
 .compact-row {
@@ -370,8 +455,67 @@ label {
   border: 1px solid #e0e7f1;
   border-radius: 14px;
   display: flex;
+  gap: 1rem;
   justify-content: space-between;
   padding: 0.75rem;
+}
+
+.compact-row span {
+  color: #64748b;
+  display: block;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.compact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.compact-actions button {
+  padding: 0.6rem 0.75rem;
+}
+
+.qr-preview-card {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #dbeafe;
+  border-radius: 18px;
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  margin-top: 1rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.book-qr-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin-top: 1rem;
+}
+
+.book-qr-grid .qr-preview-card {
+  margin-top: 0;
+}
+
+.qr-preview-card img {
+  background: #ffffff;
+  border-radius: 14px;
+  max-width: 220px;
+  padding: 0.6rem;
+  width: 100%;
+}
+
+.qr-preview-card code {
+  background: #e2e8f0;
+  border-radius: 999px;
+  color: #334155;
+  font-size: 0.8rem;
+  padding: 0.4rem 0.7rem;
 }
 
 .scan-result,
@@ -401,6 +545,32 @@ label {
 .action-row {
   justify-content: flex-start;
   margin-top: 1rem;
+}
+
+.staff-issue-panel {
+  background: #f8fafc;
+  border: 1px solid #dbeafe;
+  border-radius: 18px;
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 1rem;
+}
+
+.staff-issue-panel h3,
+.staff-issue-panel p {
+  margin: 0;
+}
+
+.staff-issue-panel p {
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.staff-issue-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 0.8fr 1.2fr;
 }
 
 .scan-result div {
@@ -475,8 +645,7 @@ label {
 
   .inline-form,
   .scan-form,
-  .management-form,
-  .demo-accounts {
+  .management-form {
     grid-template-columns: 1fr;
   }
 }

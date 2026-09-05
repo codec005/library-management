@@ -1,4 +1,17 @@
 services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: college-library-mariadb
+    environment:
+      MARIADB_DATABASE: library_management
+      MARIADB_USER: library_user
+      MARIADB_PASSWORD: library_password
+      MARIADB_ROOT_PASSWORD: root_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
   postgres:
     image: postgres:16
     container_name: college-library-postgres
@@ -12,4 +25,5 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
 volumes:
+  mariadb_data:
   postgres_data:

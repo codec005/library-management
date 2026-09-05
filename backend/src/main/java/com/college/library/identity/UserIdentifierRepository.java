@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface UserIdentifierRepository extends JpaRepository<UserIdentifier, UUID> {
 
     Optional<UserIdentifier> findByTypeAndValue(IdentifierType type, String value);
+
+    Optional<UserIdentifier> findByUserAndType(UserAccount user, IdentifierType type);
 }

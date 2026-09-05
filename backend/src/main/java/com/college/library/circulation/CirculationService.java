@@ -2,56 +2,81 @@ package com.college.library.circulation;
 
 import com.college.library.audit.AuditAction;
 import com.college.library.audit.AuditLogger;
-import com.college.library.catalog.Book;
 import com.college.library.catalog.BookCopy;
 import com.college.library.catalog.BookCopyRepository;
 import com.college.library.catalog.BookCopyStatus;
-import com.college.library.catalog.BookRepository;
+import com.college.library.catalog.ScanType;
+import com.college.library.identity.IdentifierType;
 import com.college.library.identity.UserAccount;
 import com.college.library.identity.UserAccountRepository;
+import com.college.library.identity.UserIdentifierRepository;
+import com.college.library.identity.UserRole;
 import jakarta.transaction.Transactional;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 @Service
 public class CirculationService implements CirculationUseCase {
 
-    private static final int DEFAULT_LOAN_DAYS = 14;
     private static final int RENEWAL_DAYS = 7;
-    private static final int RESERVATION_EXPIRY_DAYS = 3;
 
-    private final BookRepository bookRepository;
     private final BookCopyRepository bookCopyRepository;
     private final UserAccountRepository userAccountRepository;
+    private final UserIdentifierRepository userIdentifierRepository;
     private final CirculationTransactionRepository circulationTransactionRepository;
-    private final BookReservationRepository bookReservationRepository;
     private final AuditLogger auditLogger;
 
     public CirculationService(
-        BookRepository bookRepository,
         BookCopyRepository bookCopyRepository,
         UserAccountRepository userAccountRepository,
+        UserIdentifierRepository userIdentifierRepository,
         CirculationTransactionRepository circulationTransactionRepository,
-        BookReservationRepository bookReservationRepository,
         AuditLogger auditLogger
     ) {
-        this.bookRepository = bookRepository;
         this.bookCopyRepository = bookCopyRepository;
         this.userAccountRepository = userAccountRepository;
+        this.userIdentifierRepository = userIdentifierRepository;
         this.circulationTransactionRepository = circulationTransactionRepository;
-        this.bookReservationRepository = bookReservationRepository;
         this.auditLogger = auditLogger;
     }
 
     @Override
     @Transactional
     public CirculationResponse issue(IssueRequest request) {
-        BookCopy copy = bookCopyRepository.findById(request.bookCopyId())
+        BookCopy copy = bookCopyRepository.findByIdForUpdate(request.bookCopyId())
             .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
         UserAccount borrower = userAccountRepository.findById(request.borrowerId())
             .orElseThrow(() -> new IllegalArgumentException("Borrower not found"));
 
+        return issueCopyToBorrower(copy, borrower);
+    }
+
+    @Override
+    @Transactional
+    public CirculationResponse issueByIdentifier(IssueByIdentifierRequest request, UUID actorUserId) {
+        UserAccount actor = userAccountRepository.findById(actorUserId)
+            .filter(UserAccount::isActive)
+            .orElseThrow(() -> new IllegalArgumentException("Actor user not found"));
+        UserAccount borrower = userIdentifierRepository
+            .findByTypeAndValue(request.borrowerIdentifierType(), request.borrowerIdentifier())
+            .orElseThrow(() -> new IllegalArgumentException("Borrower not found"))
+            .getUser();
+        BookCopy copy = resolveBookCopy(request.bookScanType(), request.bookScanValue());
+
+        boolean studentSelfIssue = actor.getId().equals(borrower.getId()) && borrower.getRoles().contains(UserRole.STUDENT);
+        boolean staffIssue = borrower.getRoles().contains(UserRole.STUDENT)
+            && hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
+
+        if (!studentSelfIssue && !staffIssue) {
+            throw new IllegalStateException("Only students can issue to themselves, or librarian/admin can issue to a student");
+        }
+
+        return issueCopyToBorrower(copy, borrower);
+    }
+
+    private CirculationResponse issueCopyToBorrower(BookCopy copy, UserAccount borrower) {
         if (copy.getStatus() != BookCopyStatus.AVAILABLE) {
             throw new IllegalStateException("Book copy is not available for issue");
         }
@@ -61,7 +86,7 @@ public class CirculationService implements CirculationUseCase {
             copy,
             borrower,
             issuedOn,
-            issuedOn.plusDays(DEFAULT_LOAN_DAYS)
+            issuedOn.plusDays(copy.getBook().getLoanPeriodDays())
         );
         copy.markIssued();
 
@@ -70,10 +95,19 @@ public class CirculationService implements CirculationUseCase {
         return CirculationResponse.from(savedTransaction);
     }
 
+    private BookCopy resolveBookCopy(ScanType scanType, String scanValue) {
+        java.util.Optional<BookCopy> copy = switch (scanType) {
+            case QR -> bookCopyRepository.findByQrCodeValueForUpdate(scanValue);
+            case RFID -> bookCopyRepository.findByRfidTagUidHashForUpdate(scanValue);
+        };
+
+        return copy.orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
+    }
+
     @Override
     @Transactional
     public CirculationResponse returnCopy(UUID bookCopyId) {
-        BookCopy copy = bookCopyRepository.findById(bookCopyId)
+        BookCopy copy = bookCopyRepository.findByIdForUpdate(bookCopyId)
             .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
         CirculationTransaction transaction = circulationTransactionRepository
             .findByBookCopyAndStatus(copy, CirculationStatus.ISSUED)
@@ -113,22 +147,31 @@ public class CirculationService implements CirculationUseCase {
 
     @Override
     @Transactional
-    public ReservationResponse reserve(ReserveRequest request) {
-        Book book = bookRepository.findById(request.bookId())
-            .orElseThrow(() -> new IllegalArgumentException("Book not found"));
-        UserAccount borrower = userAccountRepository.findById(request.borrowerId())
+    public List<CirculationResponse> listIssuedBooksForUser(UUID borrowerId, UUID actorUserId) {
+        UserAccount actor = userAccountRepository.findById(actorUserId)
+            .filter(UserAccount::isActive)
+            .orElseThrow(() -> new IllegalArgumentException("Actor user not found"));
+        UserAccount borrower = userAccountRepository.findById(borrowerId)
+            .filter(UserAccount::isActive)
             .orElseThrow(() -> new IllegalArgumentException("Borrower not found"));
 
-        LocalDate requestedOn = LocalDate.now();
-        BookReservation reservation = new BookReservation(
-            book,
-            borrower,
-            requestedOn,
-            requestedOn.plusDays(RESERVATION_EXPIRY_DAYS)
-        );
+        boolean viewingSelf = actor.getId().equals(borrower.getId());
+        boolean staffViewingStudent = borrower.getRoles().contains(UserRole.STUDENT)
+            && actor.getRoles().stream().anyMatch(role ->
+                role == UserRole.LIBRARIAN || role == UserRole.ADMIN || role == UserRole.SUPER_ADMIN
+            );
 
-        BookReservation savedReservation = bookReservationRepository.save(reservation);
-        auditLogger.record(AuditAction.BOOK_RESERVE, borrower.getId(), "Book", book.getId(), book.getTitle());
-        return ReservationResponse.from(savedReservation);
+        if (!viewingSelf && !staffViewingStudent) {
+            throw new IllegalStateException("You are not allowed to view issued books for this user");
+        }
+
+        return circulationTransactionRepository.findByBorrowerAndStatus(borrower, CirculationStatus.ISSUED)
+            .stream()
+            .map(CirculationResponse::from)
+            .toList();
+    }
+
+    private boolean hasAnyRole(UserAccount user, UserRole... allowedRoles) {
+        return java.util.Set.of(allowedRoles).stream().anyMatch(user.getRoles()::contains);
     }
 }

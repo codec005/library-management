@@ -1,7 +1,7 @@
 export type IdentifierType = "ROLL_NUMBER" | "COLLEGE_EMAIL" | "PHONE_NUMBER" | "QR_CREDENTIAL" | "RFID_CARD";
 export type UserRole = "STUDENT" | "FACULTY" | "LIBRARIAN" | "ADMIN" | "SUPER_ADMIN";
 export type ScanType = "QR" | "RFID";
-export type BookCopyStatus = "AVAILABLE" | "ISSUED" | "RESERVED" | "DAMAGED" | "LOST" | "UNDER_MAINTENANCE";
+export type BookCopyStatus = "AVAILABLE" | "ISSUED" | "RESERVED" | "DAMAGED" | "LOST" | "UNDER_MAINTENANCE" | "REMOVED";
 
 export interface LoginResponse {
   userId: string;
@@ -18,13 +18,29 @@ export interface UserSummary {
   active: boolean;
 }
 
+export interface UserIdentifierSummary {
+  type: IdentifierType;
+  value: string;
+  verified: boolean;
+}
+
+export interface UserDetailsResponse extends UserSummary {
+  identifiers: UserIdentifierSummary[];
+}
+
 export interface UserRegistrationRequest {
   fullName: string;
   department: string;
   rollNumber: string;
   collegeEmail?: string;
   password: string;
-  role: "STUDENT" | "LIBRARIAN";
+  role: "STUDENT" | "LIBRARIAN" | "ADMIN";
+}
+
+export interface UserQrCredentialResponse {
+  userId: string;
+  fullName: string;
+  qrCredential: string;
 }
 
 export interface BookCreateRequest {
@@ -34,6 +50,8 @@ export interface BookCreateRequest {
   publisher?: string;
   category: string;
   shelfLocation: string;
+  finePerDay: number;
+  loanPeriodDays: number;
   copyCount: number;
 }
 
@@ -42,6 +60,8 @@ export interface BookSummary {
   title: string;
   author: string;
   category: string;
+  finePerDay: number;
+  loanPeriodDays: number;
   totalCopies: number;
   availableCopies: number;
 }
@@ -55,8 +75,18 @@ export interface BookCopyScanResponse {
   status: BookCopyStatus;
 }
 
+export interface BookCopySummary {
+  copyId: string;
+  title: string;
+  accessionNumber: string;
+  qrCodeValue: string;
+  shelfLocation: string;
+  status: BookCopyStatus;
+}
+
 export interface CirculationResponse {
   transactionId: string;
+  bookCopyId: string;
   borrowerName: string;
   accessionNumber: string;
   bookTitle: string;
@@ -64,16 +94,10 @@ export interface CirculationResponse {
   dueOn: string;
   returnedOn: string | null;
   status: "ISSUED" | "RETURNED" | "OVERDUE" | "LOST";
+  loanPeriodDays: number;
+  overdueDays: number;
+  finePerDay: number;
   fineAmount: number;
-}
-
-export interface ReservationResponse {
-  reservationId: string;
-  borrowerName: string;
-  bookTitle: string;
-  requestedOn: string;
-  expiresOn: string;
-  status: "ACTIVE" | "FULFILLED" | "CANCELLED" | "EXPIRED";
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -89,11 +113,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   try {
     response = await fetch(`${apiBaseUrl}${path}`, {
+      ...options,
       headers: {
         "Content-Type": "application/json",
         ...options?.headers
-      },
-      ...options
+      }
     });
   } catch {
     throw new ApiError("Backend is not reachable. Start the Spring Boot server on port 8080.");
@@ -154,6 +178,25 @@ export function removeStudent(studentId: string, actorUserId: string) {
   });
 }
 
+export function removeUser(userId: string, actorUserId: string) {
+  return request<void>(`/api/users/${userId}`, {
+    method: "DELETE",
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
+export function getUserQrCredential(userId: string, actorUserId: string) {
+  return request<UserQrCredentialResponse>(`/api/users/${userId}/qr-credential`, {
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
+export function getUserDetails(userId: string, actorUserId: string) {
+  return request<UserDetailsResponse>(`/api/users/${userId}`, {
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
 export function scanBookCopy(type: ScanType, value: string) {
   return request<BookCopyScanResponse>(`/api/catalog/scan?type=${type}&value=${encodeURIComponent(value)}`);
 }
@@ -162,6 +205,20 @@ export function issueBookCopy(bookCopyId: string, borrowerId: string) {
   return request<CirculationResponse>("/api/circulation/issue", {
     method: "POST",
     body: JSON.stringify({ bookCopyId, borrowerId })
+  });
+}
+
+export function issueBookByIdentifier(
+  actorUserId: string,
+  borrowerIdentifierType: IdentifierType,
+  borrowerIdentifier: string,
+  bookScanType: ScanType,
+  bookScanValue: string
+) {
+  return request<CirculationResponse>("/api/circulation/issue/by-identifier", {
+    method: "POST",
+    headers: { "X-Actor-User-Id": actorUserId },
+    body: JSON.stringify({ borrowerIdentifierType, borrowerIdentifier, bookScanType, bookScanValue })
   });
 }
 
@@ -177,10 +234,9 @@ export function renewTransaction(transactionId: string) {
   });
 }
 
-export function reserveBook(bookId: string, borrowerId: string) {
-  return request<ReservationResponse>("/api/circulation/reserve", {
-    method: "POST",
-    body: JSON.stringify({ bookId, borrowerId })
+export function listIssuedBooksForUser(borrowerId: string, actorUserId: string) {
+  return request<CirculationResponse[]>(`/api/circulation/users/${borrowerId}/issued`, {
+    headers: { "X-Actor-User-Id": actorUserId }
   });
 }
 
@@ -194,6 +250,25 @@ export function addBook(payload: BookCreateRequest, actorUserId: string) {
 
 export function removeBook(bookId: string, actorUserId: string) {
   return request<void>(`/api/catalog/books/${bookId}`, {
+    method: "DELETE",
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
+export function listBookCopies(bookId: string, actorUserId: string) {
+  return request<BookCopySummary[]>(`/api/catalog/books/${bookId}/copies`, {
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
+export function getBookCopyByQrCode(qrCodeValue: string, actorUserId: string) {
+  return request<BookCopySummary>(`/api/catalog/copies/by-qr?value=${encodeURIComponent(qrCodeValue)}`, {
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
+export function removeBookCopyByQrCode(qrCodeValue: string, actorUserId: string) {
+  return request<void>(`/api/catalog/copies/by-qr?value=${encodeURIComponent(qrCodeValue)}`, {
     method: "DELETE",
     headers: { "X-Actor-User-Id": actorUserId }
   });

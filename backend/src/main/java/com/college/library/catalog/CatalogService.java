@@ -13,4 +13,10 @@ public interface CatalogService {
     BookSummary addBook(BookCreateRequest request, UUID actorUserId);
 
     void removeBook(UUID bookId, UUID actorUserId);
+
+    List<BookCopySummary> listBookCopies(UUID bookId, UUID actorUserId);
+
+    BookCopySummary getBookCopyByQrCode(String qrCodeValue, UUID actorUserId);
+
+    void removeBookCopyByQrCode(String qrCodeValue, UUID actorUserId);
 }

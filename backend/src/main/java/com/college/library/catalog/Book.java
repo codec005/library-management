@@ -26,18 +26,34 @@ public class Book extends BaseEntity {
     @Column(nullable = false)
     private String category;
 
+    @Column(nullable = false)
+    private long finePerDay;
+
+    @Column(nullable = false)
+    private int loanPeriodDays;
+
     @OneToMany(mappedBy = "book", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<BookCopy> copies = new HashSet<>();
 
     protected Book() {
     }
 
-    public Book(String title, String author, String isbn, String publisher, String category) {
+    public Book(
+        String title,
+        String author,
+        String isbn,
+        String publisher,
+        String category,
+        long finePerDay,
+        int loanPeriodDays
+    ) {
         this.title = title;
         this.author = author;
         this.isbn = isbn;
         this.publisher = publisher;
         this.category = category;
+        this.finePerDay = finePerDay;
+        this.loanPeriodDays = loanPeriodDays;
     }
 
     public String getTitle() {
@@ -58,6 +74,14 @@ public class Book extends BaseEntity {
 
     public String getCategory() {
         return category;
+    }
+
+    public long getFinePerDay() {
+        return finePerDay;
+    }
+
+    public int getLoanPeriodDays() {
+        return loanPeriodDays;
     }
 
     public Set<BookCopy> getCopies() {

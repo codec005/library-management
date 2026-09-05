@@ -30,6 +30,14 @@ public class UserManagementController {
         return ResponseEntity.ok(userManagementUseCase.listUsers());
     }
 
+    @GetMapping("/{userId}")
+    ResponseEntity<UserDetailsResponse> getUserDetails(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @PathVariable UUID userId
+    ) {
+        return ResponseEntity.ok(userManagementUseCase.getUserDetails(userId, actorUserId));
+    }
+
     @PostMapping("/register/student")
     ResponseEntity<UserSummary> selfRegisterStudent(@Valid @RequestBody UserRegistrationRequest request) {
         return ResponseEntity.ok(userManagementUseCase.selfRegisterStudent(request));
@@ -50,5 +58,22 @@ public class UserManagementController {
     ) {
         userManagementUseCase.removeStudent(studentId, actorUserId);
         return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{userId}")
+    ResponseEntity<Void> removeUser(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @PathVariable UUID userId
+    ) {
+        userManagementUseCase.removeUser(userId, actorUserId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{userId}/qr-credential")
+    ResponseEntity<UserQrCredentialResponse> getUserQrCredential(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @PathVariable UUID userId
+    ) {
+        return ResponseEntity.ok(userManagementUseCase.getUserQrCredential(userId, actorUserId));
     }
 }

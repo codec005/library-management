@@ -75,6 +75,10 @@ public class BookCopy extends BaseEntity {
         status = BookCopyStatus.AVAILABLE;
     }
 
+    public void markRemoved() {
+        status = BookCopyStatus.REMOVED;
+    }
+
     void assignTo(Book book) {
         this.book = book;
     }

@@ -8,8 +8,9 @@ The architecture is designed so the college can start with roll-number login now
 
 - Backend: Java 21, Spring Boot, Spring Web, Spring Security, Spring Data JPA
 - Frontend: React, TypeScript, Vite
-- Local database: H2 in PostgreSQL compatibility mode
-- Production database: PostgreSQL
+- Local database: H2 for quick development
+- External database: MariaDB using the `mariadb` Spring profile
+- Optional production database: PostgreSQL profile can still be configured separately
 
 ## Project Structure
 
@@ -33,7 +34,7 @@ frontend/
 - Services depend on abstractions such as `AuditLogger` and `IdentityResolver` instead of concrete implementations.
 - Repository interfaces stay in the persistence layer and are hidden from controllers.
 - QR and RFID are modeled as identifier inputs, not separate business workflows.
-- Circulation logic is centralized so QR and RFID scans both use the same issue, return, renew, and reserve rules.
+- Circulation logic is centralized so QR and RFID scans both use the same issue, return, and renew rules.
 
 ## Run Locally
 
@@ -54,26 +55,47 @@ npm run dev
 
 Open the frontend at `http://localhost:5173`.
 
-Optional PostgreSQL container:
+Optional MariaDB container:
 
 ```bash
 docker compose up -d
 ```
 
+Run backend with MariaDB:
+
+```bash
+cd backend
+mvn spring-boot:run -Dspring-boot.run.profiles=mariadb
+```
+
+The included MariaDB defaults are:
+
+- Database: `library_management`
+- User: `library_user`
+- Password: `library_password`
+- Port: `3306`
+
+You can override these values without changing code:
+
+```bash
+export DB_URL=jdbc:mariadb://localhost:3306/library_management
+export DB_USERNAME=library_user
+export DB_PASSWORD=library_password
+export ALLOWED_ORIGINS=http://localhost:5173
+cd backend
+mvn spring-boot:run -Dspring-boot.run.profiles=mariadb
+```
+
 ## Demo Accounts
 
-Student:
+Admin:
 
 - Identifier type: `ROLL_NUMBER`
-- Identifier: `CS2026001`
-- Password: `student123`
-- User QR credential: `USER-QR-CS2026001`
+- Identifier: `ADMIN001`
+- Password: `admin123`
+- User QR credential: `USER-QR-ADMIN001`
 
-Librarian:
-
-- Identifier type: `ROLL_NUMBER`
-- Identifier: `LIB001`
-- Password: `library123`
+No default student or librarian accounts are seeded. Use the admin account to register librarians and students from the portal.
 
 ## QR And RFID Design
 
@@ -104,9 +126,9 @@ This means QR scanning and RFID scanning can both resolve to the same book copy 
 - `GET /api/catalog/books?query=clean`
 - `GET /api/catalog/scan?type=QR&value=BOOK-QR-ACC-0001`
 - `POST /api/circulation/issue`
+- `POST /api/circulation/issue/by-identifier`
 - `POST /api/circulation/return/{bookCopyId}`
 - `POST /api/circulation/renew/{transactionId}`
-- `POST /api/circulation/reserve`
 
 ## MVP Implemented In This Scaffold
 
@@ -115,10 +137,10 @@ This means QR scanning and RFID scanning can both resolve to the same book copy 
 - Passwordless QR/RFID credential login endpoint for controlled scan sessions.
 - Book catalog with copy-level tracking.
 - QR and RFID scan resolver for physical book copies.
-- Issue, return, renew, and reserve workflows.
+- Issue, return, and renew workflows.
 - Automatic overdue fine calculation in circulation responses.
-- Audit records for login, scans, issue, return, renew, and reserve actions.
-- H2 local database and PostgreSQL production configuration.
+- Audit records for login, scans, issue, return, and renew actions.
+- H2 local database, MariaDB profile, and PostgreSQL production configuration.
 
 ## Next Features To Add
 
@@ -127,6 +149,6 @@ This means QR scanning and RFID scanning can both resolve to the same book copy 
 - QR code image generation
 - Camera-based QR scanner integration
 - Fine calculation and payment workflow
-- Reservation and renewal workflow
+- Renewal workflow improvements
 - Audit logs and reports
 - PostgreSQL migration scripts using Flyway or Liquibase

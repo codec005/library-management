@@ -6,5 +6,6 @@ public enum BookCopyStatus {
     RESERVED,
     DAMAGED,
     LOST,
-    UNDER_MAINTENANCE
+    UNDER_MAINTENANCE,
+    REMOVED
 }

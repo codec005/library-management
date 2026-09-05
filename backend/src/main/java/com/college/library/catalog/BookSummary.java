@@ -7,10 +7,15 @@ public record BookSummary(
     String title,
     String author,
     String category,
+    long finePerDay,
+    int loanPeriodDays,
     long totalCopies,
     long availableCopies
 ) {
     static BookSummary from(Book book) {
+        long activeCopies = book.getCopies().stream()
+            .filter(copy -> copy.getStatus() != BookCopyStatus.REMOVED)
+            .count();
         long availableCopies = book.getCopies().stream()
             .filter(copy -> copy.getStatus() == BookCopyStatus.AVAILABLE)
             .count();
@@ -20,7 +25,9 @@ public record BookSummary(
             book.getTitle(),
             book.getAuthor(),
             book.getCategory(),
-            book.getCopies().size(),
+            book.getFinePerDay(),
+            book.getLoanPeriodDays(),
+            activeCopies,
             availableCopies
         );
     }

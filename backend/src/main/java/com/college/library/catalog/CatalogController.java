@@ -55,4 +55,29 @@ public class CatalogController {
         catalogService.removeBook(bookId, actorUserId);
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/books/{bookId}/copies")
+    ResponseEntity<List<BookCopySummary>> listBookCopies(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @PathVariable UUID bookId
+    ) {
+        return ResponseEntity.ok(catalogService.listBookCopies(bookId, actorUserId));
+    }
+
+    @GetMapping("/copies/by-qr")
+    ResponseEntity<BookCopySummary> getBookCopyByQrCode(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @RequestParam String value
+    ) {
+        return ResponseEntity.ok(catalogService.getBookCopyByQrCode(value, actorUserId));
+    }
+
+    @DeleteMapping("/copies/by-qr")
+    ResponseEntity<Void> removeBookCopyByQrCode(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @RequestParam String value
+    ) {
+        catalogService.removeBookCopyByQrCode(value, actorUserId);
+        return ResponseEntity.noContent().build();
+    }
 }

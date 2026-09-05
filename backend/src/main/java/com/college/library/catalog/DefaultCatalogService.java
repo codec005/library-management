@@ -50,8 +50,12 @@ public class DefaultCatalogService implements CatalogService {
     @Transactional
     public Optional<BookCopyScanResponse> scanCopy(ScanType type, String value) {
         Optional<BookCopyScanResponse> response = switch (type) {
-            case QR -> bookCopyRepository.findByQrCodeValue(value).map(BookCopyScanResponse::from);
-            case RFID -> bookCopyRepository.findByRfidTagUidHash(value).map(BookCopyScanResponse::from);
+            case QR -> bookCopyRepository.findByQrCodeValue(value)
+                .filter(copy -> copy.getStatus() != BookCopyStatus.REMOVED)
+                .map(BookCopyScanResponse::from);
+            case RFID -> bookCopyRepository.findByRfidTagUidHash(value)
+                .filter(copy -> copy.getStatus() != BookCopyStatus.REMOVED)
+                .map(BookCopyScanResponse::from);
         };
 
         response.ifPresent(scan -> auditLogger.record(AuditAction.BOOK_SCAN, null, "BookCopy", scan.copyId(), type.name()));
@@ -62,7 +66,15 @@ public class DefaultCatalogService implements CatalogService {
     @Transactional
     public BookSummary addBook(BookCreateRequest request, UUID actorUserId) {
         UserAccount actor = findCatalogManager(actorUserId);
-        Book book = new Book(request.title(), request.author(), request.isbn(), request.publisher(), request.category());
+        Book book = new Book(
+            request.title(),
+            request.author(),
+            request.isbn(),
+            request.publisher(),
+            request.category(),
+            request.finePerDay(),
+            request.loanPeriodDays()
+        );
         String normalizedTitle = request.title().replaceAll("[^A-Za-z0-9]", "").toUpperCase();
 
         for (int index = 1; index <= request.copyCount(); index++) {
@@ -84,6 +96,47 @@ public class DefaultCatalogService implements CatalogService {
 
         bookRepository.delete(book);
         auditLogger.record(AuditAction.BOOK_REMOVE, actor.getId(), "Book", bookId, book.getTitle());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BookCopySummary> listBookCopies(UUID bookId, UUID actorUserId) {
+        findCatalogManager(actorUserId);
+        Book book = bookRepository.findById(bookId)
+            .orElseThrow(() -> new IllegalArgumentException("Book not found"));
+
+        return book.getCopies().stream()
+            .filter(copy -> copy.getStatus() != BookCopyStatus.REMOVED)
+            .map(BookCopySummary::from)
+            .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BookCopySummary getBookCopyByQrCode(String qrCodeValue, UUID actorUserId) {
+        findCatalogManager(actorUserId);
+        BookCopy copy = bookCopyRepository.findByQrCodeValue(qrCodeValue)
+            .filter(bookCopy -> bookCopy.getStatus() != BookCopyStatus.REMOVED)
+            .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
+
+        return BookCopySummary.from(copy);
+    }
+
+    @Override
+    @Transactional
+    public void removeBookCopyByQrCode(String qrCodeValue, UUID actorUserId) {
+        UserAccount actor = findCatalogManager(actorUserId);
+        BookCopy copy = bookCopyRepository.findByQrCodeValueForUpdate(qrCodeValue)
+            .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
+
+        if (copy.getStatus() == BookCopyStatus.ISSUED) {
+            throw new IllegalStateException("Issued book copies must be returned before removal");
+        }
+
+        UUID copyId = copy.getId();
+        String accessionNumber = copy.getAccessionNumber();
+        copy.markRemoved();
+        auditLogger.record(AuditAction.BOOK_REMOVE, actor.getId(), "BookCopy", copyId, accessionNumber);
     }
 
     private UserAccount findCatalogManager(UUID actorUserId) {

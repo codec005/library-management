@@ -53,12 +53,13 @@ public class UserManagementService implements UserManagementUseCase {
             throw new IllegalStateException("Only librarian or admin can register students");
         }
 
-        if (request.role() == UserRole.LIBRARIAN && !hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
-            throw new IllegalStateException("Only admin can register librarians");
+        if ((request.role() == UserRole.LIBRARIAN || request.role() == UserRole.ADMIN)
+            && !hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only admin can register librarian or admin accounts");
         }
 
-        if (request.role() != UserRole.STUDENT && request.role() != UserRole.LIBRARIAN) {
-            throw new IllegalStateException("This registration flow supports only student and librarian accounts");
+        if (request.role() != UserRole.STUDENT && request.role() != UserRole.LIBRARIAN && request.role() != UserRole.ADMIN) {
+            throw new IllegalStateException("This registration flow supports only student, librarian, and admin accounts");
         }
 
         UserAccount user = createUser(request);
@@ -69,21 +70,83 @@ public class UserManagementService implements UserManagementUseCase {
     @Override
     @Transactional
     public void removeStudent(UUID studentId, UUID actorUserId) {
-        UserAccount actor = findActor(actorUserId);
+        removeUser(studentId, actorUserId);
+    }
 
-        if (!hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+    @Override
+    @Transactional
+    public void removeUser(UUID userId, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+        UserAccount targetUser = userAccountRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        if (targetUser.getRoles().contains(UserRole.STUDENT)
+            && !hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
             throw new IllegalStateException("Only librarian or admin can remove students");
         }
 
-        UserAccount student = userAccountRepository.findById(studentId)
-            .orElseThrow(() -> new IllegalArgumentException("Student not found"));
-
-        if (!student.getRoles().contains(UserRole.STUDENT)) {
-            throw new IllegalStateException("Only student accounts can be removed here");
+        if (targetUser.getRoles().contains(UserRole.LIBRARIAN)
+            && !hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only admin can remove librarians");
         }
 
-        student.deactivate();
-        auditLogger.record(AuditAction.USER_REMOVE, actor.getId(), "UserAccount", student.getId(), "student deactivated");
+        if (targetUser.getRoles().contains(UserRole.ADMIN)) {
+            if (!hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+                throw new IllegalStateException("Only admin can remove another admin");
+            }
+
+            if (actor.getId().equals(targetUser.getId())) {
+                throw new IllegalStateException("Admin cannot remove their own account");
+            }
+        }
+
+        if (targetUser.getRoles().contains(UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Super admin accounts cannot be removed from this screen");
+        }
+
+        targetUser.deactivate();
+        auditLogger.record(AuditAction.USER_REMOVE, actor.getId(), "UserAccount", targetUser.getId(), "user deactivated");
+    }
+
+    @Override
+    @Transactional
+    public UserQrCredentialResponse getUserQrCredential(UUID userId, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+
+        if (!hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only librarian or admin can generate user QR codes");
+        }
+
+        UserAccount user = userAccountRepository.findById(userId)
+            .filter(UserAccount::isActive)
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        String qrCredential = userIdentifierRepository.findByUserAndType(user, IdentifierType.QR_CREDENTIAL)
+            .orElseGet(() -> createQrCredential(user))
+            .getValue();
+
+        auditLogger.record(AuditAction.USER_QR_GENERATE, actor.getId(), "UserAccount", user.getId(), "QR credential requested");
+        return new UserQrCredentialResponse(user.getId(), user.getFullName(), qrCredential);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserDetailsResponse getUserDetails(UUID userId, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+        UserAccount user = userAccountRepository.findById(userId)
+            .filter(UserAccount::isActive)
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        boolean viewingSelf = actor.getId().equals(user.getId());
+        boolean staffViewingStudent = user.getRoles().contains(UserRole.STUDENT)
+            && hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
+        boolean adminViewingStaff = hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN);
+
+        if (!viewingSelf && !staffViewingStudent && !adminViewingStaff) {
+            throw new IllegalStateException("You are not allowed to view this user");
+        }
+
+        return UserDetailsResponse.from(user);
     }
 
     @Override
@@ -117,6 +180,19 @@ public class UserManagementService implements UserManagementUseCase {
             .ifPresent(identifier -> {
                 throw new IllegalStateException(type + " already exists");
             });
+    }
+
+    private UserIdentifier createQrCredential(UserAccount user) {
+        String baseValue = userIdentifierRepository.findByUserAndType(user, IdentifierType.ROLL_NUMBER)
+            .map(UserIdentifier::getValue)
+            .orElse(user.getId().toString());
+        String qrValue = "USER-QR-" + baseValue;
+
+        ensureIdentifierAvailable(IdentifierType.QR_CREDENTIAL, qrValue);
+
+        UserIdentifier qrIdentifier = new UserIdentifier(IdentifierType.QR_CREDENTIAL, qrValue, true);
+        user.addIdentifier(qrIdentifier);
+        return userIdentifierRepository.save(qrIdentifier);
     }
 
     private UserAccount findActor(UUID actorUserId) {

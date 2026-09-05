@@ -11,5 +11,11 @@ public interface UserManagementUseCase {
 
     void removeStudent(UUID studentId, UUID actorUserId);
 
+    void removeUser(UUID userId, UUID actorUserId);
+
+    UserQrCredentialResponse getUserQrCredential(UUID userId, UUID actorUserId);
+
+    UserDetailsResponse getUserDetails(UUID userId, UUID actorUserId);
+
     List<UserSummary> listUsers();
 }
