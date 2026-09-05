@@ -76,6 +76,10 @@ public class AuthService implements AuthUseCase {
             throw new BadCredentialsException("Account is inactive");
         }
 
+        if (!user.getRoles().contains(UserRole.STUDENT)) {
+            throw new BadCredentialsException("Staff must use ID and password login");
+        }
+
         auditLogger.record(AuditAction.SCAN_LOGIN, user.getId(), "UserAccount", user.getId(), request.identifierType().name());
         return new LoginResponse(user.getId(), user.getFullName(), user.getRoles(), "scan-token-" + UUID.randomUUID());
     }

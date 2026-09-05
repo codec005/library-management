@@ -34,6 +34,8 @@ import {
   searchBooks
 } from "./api";
 
+const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
+
 export default function App() {
   const [identifierType, setIdentifierType] = useState<IdentifierType>("ROLL_NUMBER");
   const [identifier, setIdentifier] = useState("");
@@ -130,6 +132,36 @@ export default function App() {
       .catch(() => setUsers([]));
   }, []);
 
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    let timeoutId = window.setTimeout(expireSession, SESSION_TIMEOUT_MS);
+    const activityEvents = ["click", "keydown", "mousemove", "scroll", "touchstart"];
+
+    function resetTimer() {
+      window.clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(expireSession, SESSION_TIMEOUT_MS);
+    }
+
+    function expireSession() {
+      setCurrentUser(null);
+      setMyProfile(null);
+      setMyIssuedBooks([]);
+      clearSessionOnlyState();
+      clearLoginInputs();
+      setMessage("Session timed out after 15 minutes. Please sign in again.");
+    }
+
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, resetTimer));
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+    };
+  }, [currentUser]);
+
   function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
 
@@ -181,6 +213,7 @@ export default function App() {
     setScanResult(null);
     setScanValue("");
     setStaffBorrowerIdentifier("");
+    setCheckedStudent(null);
   }
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
@@ -603,7 +636,7 @@ export default function App() {
               {logoUrl ? <img src={logoUrl} alt="College logo" /> : "CL"}
             </div>
           </div>
-          <div>
+          <div className="brand-copy">
             <p className={collegeName ? "college-name" : "eyebrow"}>{collegeName || "College Portal"}</p>
             <h1>Central Library Management</h1>
             <p className="header-subtitle">Student registration, catalog search, circulation, and QR services.</p>
@@ -711,56 +744,70 @@ export default function App() {
         )}
 
         {!currentUser && (
-        <form className="login-card" onSubmit={handleLogin}>
-          <div className="card-header">
-            <Users size={22} />
-            <div>
-              <h2>Portal Login</h2>
-              <p>Sign in to continue.</p>
-            </div>
+          <div className="login-split">
+            <article className="login-card">
+              <div className="card-header">
+                <QrCode size={22} />
+                <div>
+                  <h2>Student Login</h2>
+                  <p>Students must sign in with their ID QR code.</p>
+                </div>
+              </div>
+
+              <label>
+                Student QR Code
+                <input
+                  placeholder="Scan or enter student QR value"
+                  value={userScanValue}
+                  onChange={(event) => setUserScanValue(event.target.value)}
+                />
+              </label>
+              <button type="button" onClick={() => void handleUserScanLogin()}>
+                Login Student With QR
+              </button>
+              <QrScanner
+                label="Scan Student QR"
+                onDetected={(value) => {
+                  setUserScanValue(value);
+                  void handleUserScanLogin(value);
+                }}
+              />
+            </article>
+
+            <form className="login-card" onSubmit={handleLogin}>
+              <div className="card-header">
+                <Users size={22} />
+                <div>
+                  <h2>Staff Login</h2>
+                  <p>Librarian and admin sign in with ID and password.</p>
+                </div>
+              </div>
+
+              <label>
+                Login Method
+                <select value={identifierType} onChange={(event) => setIdentifierType(event.target.value as IdentifierType)}>
+                  <option value="ROLL_NUMBER">Staff Code</option>
+                  <option value="COLLEGE_EMAIL">College Email</option>
+                </select>
+              </label>
+
+              <label>
+                {loginIdentifierLabel}
+                <input
+                  placeholder={`Enter ${loginIdentifierLabel.toLowerCase()}`}
+                  value={identifier}
+                  onChange={(event) => setIdentifier(event.target.value)}
+                />
+              </label>
+
+              <label>
+                Password / PIN
+                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+              </label>
+
+              <button type="submit">Sign In Staff</button>
+            </form>
           </div>
-
-          <label>
-            Login Method
-            <select value={identifierType} onChange={(event) => setIdentifierType(event.target.value as IdentifierType)}>
-              <option value="ROLL_NUMBER">Staff Code</option>
-              <option value="COLLEGE_EMAIL">College Email</option>
-            </select>
-          </label>
-
-          <label>
-            {loginIdentifierLabel}
-            <input
-              placeholder={`Enter ${loginIdentifierLabel.toLowerCase()}`}
-              value={identifier}
-              onChange={(event) => setIdentifier(event.target.value)}
-            />
-          </label>
-
-          <label>
-            Password / PIN
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-          </label>
-
-          <button type="submit">Sign in</button>
-
-          <div className="scan-login">
-            <label>
-              User QR Login
-              <input value={userScanValue} onChange={(event) => setUserScanValue(event.target.value)} />
-            </label>
-            <button type="button" onClick={() => void handleUserScanLogin()}>
-              Login with QR
-            </button>
-            <QrScanner
-              label="Open Camera"
-              onDetected={(value) => {
-                setUserScanValue(value);
-                void handleUserScanLogin(value);
-              }}
-            />
-          </div>
-        </form>
         )}
 
         <article className="panel">
