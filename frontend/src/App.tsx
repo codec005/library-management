@@ -43,6 +43,7 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [userScanValue, setUserScanValue] = useState("");
   const [currentUser, setCurrentUser] = useState<LoginResponse | null>(null);
+  const [sessionRemainingSeconds, setSessionRemainingSeconds] = useState<number | null>(null);
   const [logoUrl, setLogoUrl] = useState(() => localStorage.getItem("collegeLogoUrl") ?? "");
   const [collegeName, setCollegeName] = useState(() => localStorage.getItem("collegeName") ?? "");
   const [query, setQuery] = useState("");
@@ -64,6 +65,7 @@ export default function App() {
   const [generatedQr, setGeneratedQr] = useState<{ fullName: string; dataUrl: string; value: string } | null>(null);
   const [isUserDirectoryOpen, setIsUserDirectoryOpen] = useState(false);
   const [isIssuedBooksWindowOpen, setIsIssuedBooksWindowOpen] = useState(false);
+  const [isBookQrWindowOpen, setIsBookQrWindowOpen] = useState(false);
   const [bookCopyQrValue, setBookCopyQrValue] = useState("");
   const [generateQrAfterAdd, setGenerateQrAfterAdd] = useState(false);
   const [generatedBookQrs, setGeneratedBookQrs] = useState<Array<BookCopySummary & { dataUrl: string }>>([]);
@@ -123,6 +125,9 @@ export default function App() {
     () => selectedUserIssuedBooks.reduce((total, book) => total + book.fineAmount, 0),
     [selectedUserIssuedBooks]
   );
+  const sessionTimerLabel = sessionRemainingSeconds === null
+    ? ""
+    : `${Math.floor(sessionRemainingSeconds / 60)}:${String(sessionRemainingSeconds % 60).padStart(2, "0")}`;
 
   useEffect(() => {
     searchBooks("")
@@ -138,16 +143,29 @@ export default function App() {
       return;
     }
 
+    let expiresAt = Date.now() + SESSION_TIMEOUT_MS;
     let timeoutId = window.setTimeout(expireSession, SESSION_TIMEOUT_MS);
+    const intervalId = window.setInterval(updateTimerLabel, 1000);
     const activityEvents = ["click", "keydown", "mousemove", "scroll", "touchstart"];
 
+    updateTimerLabel();
+
     function resetTimer() {
+      expiresAt = Date.now() + SESSION_TIMEOUT_MS;
       window.clearTimeout(timeoutId);
       timeoutId = window.setTimeout(expireSession, SESSION_TIMEOUT_MS);
+      updateTimerLabel();
+    }
+
+    function updateTimerLabel() {
+      const remainingSeconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      setSessionRemainingSeconds(remainingSeconds);
     }
 
     function expireSession() {
+      window.clearInterval(intervalId);
       setCurrentUser(null);
+      setSessionRemainingSeconds(null);
       setMyProfile(null);
       setMyIssuedBooks([]);
       clearSessionOnlyState();
@@ -159,6 +177,7 @@ export default function App() {
 
     return () => {
       window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
       activityEvents.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
     };
   }, [currentUser]);
@@ -209,6 +228,7 @@ export default function App() {
     setGeneratedQr(null);
     setIsUserDirectoryOpen(false);
     setIsIssuedBooksWindowOpen(false);
+    setIsBookQrWindowOpen(false);
     setGeneratedBookQrs([]);
     setBookCopyQrValue("");
     setScanResult(null);
@@ -568,6 +588,7 @@ export default function App() {
 
       if (!generateQrAfterAdd) {
         setGeneratedBookQrs([]);
+        setIsBookQrWindowOpen(false);
         setMessage(`${book.title} added to catalog.`);
         return;
       }
@@ -584,9 +605,11 @@ export default function App() {
           }))
         );
         setGeneratedBookQrs(qrImages);
+        setIsBookQrWindowOpen(true);
         setMessage(`${book.title} added. Generated ${qrImages.length} QR code(s) for the new copy/copies.`);
       } catch (error) {
         setGeneratedBookQrs([]);
+        setIsBookQrWindowOpen(false);
         setMessage(error instanceof Error ? `${book.title} added, but QR generation failed: ${error.message}` : `${book.title} added, but QR generation failed.`);
       }
     } catch (error) {
@@ -610,6 +633,7 @@ export default function App() {
       await removeBookCopyByQrCode(qrCodeValue, currentUser.userId);
       setBooks(await searchBooks(query));
       setGeneratedBookQrs([]);
+      setIsBookQrWindowOpen(false);
       setBookCopyQrValue("");
       setMessage("Book copy removed from catalog.");
     } catch (error) {
@@ -619,11 +643,20 @@ export default function App() {
 
   function handleLogout() {
     setCurrentUser(null);
+    setSessionRemainingSeconds(null);
     setMyProfile(null);
     setMyIssuedBooks([]);
     clearSessionOnlyState();
     clearLoginInputs();
     setMessage("You have been logged out.");
+  }
+
+  function handleCloseUserDirectory() {
+    setIsUserDirectoryOpen(false);
+    setSelectedUserDetails(null);
+    setSelectedUserIssuedBooks([]);
+    setGeneratedQr(null);
+    setIsIssuedBooksWindowOpen(false);
   }
 
   return (
@@ -661,6 +694,7 @@ export default function App() {
           <div>
             <strong>{currentUser ? currentUser.fullName : "Not signed in"}</strong>
             <span>{currentUser ? activeRole : "Guest"}</span>
+            {currentUser && <span className="session-timer">Session: {sessionTimerLabel}</span>}
           </div>
           {currentUser && (
             <button type="button" className="logout-button" onClick={handleLogout}>
@@ -671,7 +705,17 @@ export default function App() {
       </header>
 
       {message && (
-        <div className="modal-backdrop message-backdrop" role="dialog" aria-modal="true" aria-label="Portal message">
+        <div
+          className="modal-backdrop message-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Portal message"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setMessage("");
+            }
+          }}
+        >
           <div className="modal-panel message-dialog">
             <div className="modal-header">
               <div>
@@ -751,23 +795,12 @@ export default function App() {
                 <QrCode size={22} />
                 <div>
                   <h2>Student Login</h2>
-                  <p>Students must sign in with their ID QR code.</p>
+                  <p>Students must scan their ID QR code to sign in.</p>
                 </div>
               </div>
 
-              <label>
-                Student QR Code
-                <input
-                  placeholder="Scan or enter student QR value"
-                  value={userScanValue}
-                  onChange={(event) => setUserScanValue(event.target.value)}
-                />
-              </label>
-              <button type="button" onClick={() => void handleUserScanLogin()}>
-                Login Student With QR
-              </button>
               <QrScanner
-                label="Scan Student QR"
+                label="Scan Student QR To Login"
                 onDetected={(value) => {
                   setUserScanValue(value);
                   void handleUserScanLogin(value);
@@ -852,7 +885,7 @@ export default function App() {
 
         </article>
 
-        <article className="panel">
+        <article className="panel issue-panel">
           <div className="panel-title">
             <QrCode size={22} />
             <div>
@@ -867,23 +900,14 @@ export default function App() {
             <div className="simple-scan-flow">
               {canManageBooks && (
                 <div className="staff-issue-panel">
-                  <h3>Student</h3>
-                  <p>Step 1: Enter the student's roll number or scan the student QR.</p>
+                  <h3><span className="step-badge">1</span> Student</h3>
+                  <p>Step 1: Enter the student's roll number, or scan the student QR.</p>
                   <div className="staff-issue-grid">
-                    <select
-                      value={staffBorrowerIdentifierType}
-                      onChange={(event) => {
-                        setStaffBorrowerIdentifierType(event.target.value as IdentifierType);
-                        setCheckedStudent(null);
-                      }}
-                    >
-                      <option value="ROLL_NUMBER">Student Roll Number</option>
-                      <option value="QR_CREDENTIAL">Student QR</option>
-                    </select>
                     <input
-                      placeholder="Student roll number or QR value"
-                      value={staffBorrowerIdentifier}
+                      placeholder="Student roll number"
+                      value={staffBorrowerIdentifierType === "ROLL_NUMBER" ? staffBorrowerIdentifier : ""}
                       onChange={(event) => {
+                        setStaffBorrowerIdentifierType("ROLL_NUMBER");
                         setStaffBorrowerIdentifier(event.target.value);
                         setCheckedStudent(null);
                       }}
@@ -900,6 +924,9 @@ export default function App() {
                       setCheckedStudent(null);
                     }}
                   />
+                  {staffBorrowerIdentifierType === "QR_CREDENTIAL" && staffBorrowerIdentifier && (
+                    <p className="scan-captured-note">Student QR captured from scanner. Click Check Student to verify.</p>
+                  )}
                   {checkedStudent && (
                     <div className="checked-student-card">
                       <strong>{checkedStudent.fullName}</strong>
@@ -910,7 +937,7 @@ export default function App() {
               )}
 
               <div className="staff-issue-panel">
-                <h3>Book Copy</h3>
+                <h3><span className="step-badge">2</span> Book Copy</h3>
                 <p>Step 2: Scan the book QR or enter the book QR/RFID value manually.</p>
                 <form className="scan-form" onSubmit={handleScan}>
                   <select value={scanType} onChange={(event) => setScanType(event.target.value as ScanType)}>
@@ -937,7 +964,7 @@ export default function App() {
                 />
               </div>
 
-              <div className="action-row">
+              <div className="action-row issue-action-row">
                 {isStudent && (
                   <button type="button" onClick={() => void handleIssue()}>
                     Issue To Me
@@ -1137,18 +1164,14 @@ export default function App() {
             </form>
 
             {generatedBookQrs.length > 0 && (
-              <div className="book-qr-grid">
-                {generatedBookQrs.map((copy) => (
-                  <div className="qr-preview-card" key={copy.copyId}>
-                    <strong>{copy.title}</strong>
-                    <span>{copy.accessionNumber}</span>
-                    <img src={copy.dataUrl} alt={`QR code for ${copy.accessionNumber}`} />
-                    <code>{copy.qrCodeValue}</code>
-                    <button type="button" onClick={() => handleDownloadBookQr(copy)}>
-                      Save Book QR
-                    </button>
-                  </div>
-                ))}
+              <div className="qr-window-launch">
+                <div>
+                  <strong>{generatedBookQrs.length} book QR code(s) generated</strong>
+                  <span>Open them in a scrollable window to review and save copies.</span>
+                </div>
+                <button type="button" className="secondary-button" onClick={() => setIsBookQrWindowOpen(true)}>
+                  Open Book QR Window
+                </button>
               </div>
             )}
 
@@ -1178,7 +1201,17 @@ export default function App() {
       )}
 
       {isCatalogWindowOpen && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Full catalogue">
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Full catalogue"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsCatalogWindowOpen(false);
+            }
+          }}
+        >
           <div className="modal-panel full-catalog-window">
             <div className="modal-header">
               <div>
@@ -1221,8 +1254,60 @@ export default function App() {
         </div>
       )}
 
+      {isBookQrWindowOpen && generatedBookQrs.length > 0 && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Generated book QR codes"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsBookQrWindowOpen(false);
+            }
+          }}
+        >
+          <div className="modal-panel book-qr-window">
+            <div className="modal-header">
+              <div>
+                <h2>Generated Book QR Codes</h2>
+                <p>{generatedBookQrs.length} physical copy QR code(s). Scroll to review all copies.</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setIsBookQrWindowOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            <div className="book-qr-scroll">
+              <div className="book-qr-grid">
+                {generatedBookQrs.map((copy) => (
+                  <div className="qr-preview-card" key={copy.copyId}>
+                    <strong>{copy.title}</strong>
+                    <span>{copy.accessionNumber}</span>
+                    <img src={copy.dataUrl} alt={`QR code for ${copy.accessionNumber}`} />
+                    <code>{copy.qrCodeValue}</code>
+                    <button type="button" onClick={() => handleDownloadBookQr(copy)}>
+                      Save Book QR
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {canManageStudents && isUserDirectoryOpen && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="User directory">
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="User directory"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              handleCloseUserDirectory();
+            }
+          }}
+        >
           <div className="modal-panel">
             <div className="modal-header">
               <div>
@@ -1232,13 +1317,7 @@ export default function App() {
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() => {
-                  setIsUserDirectoryOpen(false);
-                  setSelectedUserDetails(null);
-                  setSelectedUserIssuedBooks([]);
-                  setGeneratedQr(null);
-                  setIsIssuedBooksWindowOpen(false);
-                }}
+                onClick={handleCloseUserDirectory}
               >
                 Close
               </button>
@@ -1326,7 +1405,17 @@ export default function App() {
       )}
 
       {isIssuedBooksWindowOpen && selectedUserDetails && (
-        <div className="modal-backdrop secondary-modal" role="dialog" aria-modal="true" aria-label="Issued books">
+        <div
+          className="modal-backdrop secondary-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Issued books"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsIssuedBooksWindowOpen(false);
+            }
+          }}
+        >
           <div className="modal-panel issued-books-window">
             <div className="modal-header">
               <div>
