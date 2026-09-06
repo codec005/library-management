@@ -381,6 +381,160 @@ With the database/user/password above, the default `application-mariadb.yml` val
 jdbc:mariadb://localhost:3306/library_management
 ```
 
+### 9. Run Automatically On Raspberry Pi Startup
+
+Use this when the portal should start automatically whenever the Raspberry Pi boots.
+
+These steps assume the project is stored at:
+
+```text
+/home/pi/library-management
+```
+
+If your project is in a different folder, replace `/home/pi/library-management` in the commands and service files.
+
+Install required tools on Raspberry Pi OS:
+
+```bash
+sudo apt update
+sudo apt install -y openjdk-21-jdk maven nodejs npm mariadb-server
+```
+
+Start and enable MariaDB:
+
+```bash
+sudo systemctl enable mariadb
+sudo systemctl start mariadb
+```
+
+Create the database and user if you have not already created them:
+
+```bash
+sudo mariadb
+```
+
+Then run:
+
+```sql
+CREATE DATABASE IF NOT EXISTS library_management;
+CREATE USER IF NOT EXISTS 'library_user'@'localhost' IDENTIFIED BY 'library_password';
+GRANT ALL PRIVILEGES ON library_management.* TO 'library_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+Install frontend dependencies:
+
+```bash
+cd /home/pi/library-management/frontend
+npm install
+```
+
+Quick one-command setup:
+
+```bash
+cd /home/pi/library-management
+./deploy/raspberry-pi/install-autostart.sh
+```
+
+If the script cannot detect the Pi IP address, pass it manually:
+
+```bash
+PI_IP_ADDRESS=192.168.1.25 ./deploy/raspberry-pi/install-autostart.sh
+```
+
+The script installs required packages, creates the MariaDB database/user, installs frontend dependencies, creates a local HTTPS certificate, writes systemd services, enables them, and restarts the app services.
+
+Use the manual steps below if you want to review each setup step yourself.
+
+Check that backend and frontend can run manually before enabling startup:
+
+```bash
+cd /home/pi/library-management/backend
+mvn spring-boot:run -Dspring-boot.run.profiles=mariadb
+```
+
+In another terminal:
+
+```bash
+cd /home/pi/library-management/frontend
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+For camera scanning from phones or other devices, use HTTPS on the frontend. Create certificates for the Pi IP address:
+
+```bash
+sudo apt install -y mkcert libnss3-tools
+mkcert -install
+cd /home/pi/library-management
+mkdir -p certs
+mkcert -key-file certs/library-local-key.pem -cert-file certs/library-local-cert.pem localhost 127.0.0.1 PI_IP_ADDRESS
+```
+
+Replace `PI_IP_ADDRESS` with the Raspberry Pi IP address, for example `192.168.1.25`.
+
+Copy the provided systemd service templates:
+
+```bash
+cd /home/pi/library-management
+sudo cp deploy/raspberry-pi/library-backend.service.example /etc/systemd/system/library-backend.service
+sudo cp deploy/raspberry-pi/library-frontend.service.example /etc/systemd/system/library-frontend.service
+```
+
+Edit the services:
+
+```bash
+sudo nano /etc/systemd/system/library-backend.service
+sudo nano /etc/systemd/system/library-frontend.service
+```
+
+Update these values if needed:
+
+- `User=pi`
+- `/home/pi/library-management`
+- `PI_IP_ADDRESS`
+- `DB_USERNAME`
+- `DB_PASSWORD`
+- certificate paths
+
+Enable both services so they start on boot:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable library-backend
+sudo systemctl enable library-frontend
+sudo systemctl start library-backend
+sudo systemctl start library-frontend
+```
+
+Check service status:
+
+```bash
+sudo systemctl status library-backend
+sudo systemctl status library-frontend
+```
+
+View live logs if something fails:
+
+```bash
+journalctl -u library-backend -f
+journalctl -u library-frontend -f
+```
+
+Open the portal from another device on the same network:
+
+```text
+https://PI_IP_ADDRESS:5174
+```
+
+If you choose HTTP instead of HTTPS, use:
+
+```text
+http://PI_IP_ADDRESS:5173
+```
+
+Camera QR scanning on another device usually requires HTTPS.
+
 ## Demo Accounts
 
 Admin:

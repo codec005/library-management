@@ -1,0 +1,17 @@
+[Unit]
+Description=College Library Management Frontend
+After=network-online.target library-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/library-management/frontend
+Environment=VITE_HTTPS_KEY=/home/pi/library-management/certs/library-local-key.pem
+Environment=VITE_HTTPS_CERT=/home/pi/library-management/certs/library-local-cert.pem
+ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0 --port 5174
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
