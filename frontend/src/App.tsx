@@ -143,6 +143,7 @@ export default function App() {
       return;
     }
 
+    const isHardTimeoutSession = currentUser.roles.includes("STUDENT");
     let expiresAt = Date.now() + SESSION_TIMEOUT_MS;
     let timeoutId = window.setTimeout(expireSession, SESSION_TIMEOUT_MS);
     const intervalId = window.setInterval(updateTimerLabel, 1000);
@@ -151,6 +152,10 @@ export default function App() {
     updateTimerLabel();
 
     function resetTimer() {
+      if (isHardTimeoutSession) {
+        return;
+      }
+
       expiresAt = Date.now() + SESSION_TIMEOUT_MS;
       window.clearTimeout(timeoutId);
       timeoutId = window.setTimeout(expireSession, SESSION_TIMEOUT_MS);
@@ -173,12 +178,16 @@ export default function App() {
       setMessage("Session timed out after 15 minutes. Please sign in again.");
     }
 
-    activityEvents.forEach((eventName) => window.addEventListener(eventName, resetTimer));
+    if (!isHardTimeoutSession) {
+      activityEvents.forEach((eventName) => window.addEventListener(eventName, resetTimer));
+    }
 
     return () => {
       window.clearTimeout(timeoutId);
       window.clearInterval(intervalId);
-      activityEvents.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+      if (!isHardTimeoutSession) {
+        activityEvents.forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+      }
     };
   }, [currentUser]);
 
@@ -848,8 +857,8 @@ export default function App() {
           <div className="panel-title">
             <BookOpen size={22} />
             <div>
-              <h2>Catalog Search</h2>
-              <p>Search by title, author, or category.</p>
+              <h2>Available Books</h2>
+              <p>Search books by title, author, or category.</p>
             </div>
           </div>
 
