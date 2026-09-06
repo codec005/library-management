@@ -35,6 +35,7 @@ import {
 } from "./api";
 
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
+const COPYRIGHT_YEAR = new Date().getFullYear();
 
 export default function App() {
   const [identifierType, setIdentifierType] = useState<IdentifierType>("ROLL_NUMBER");
@@ -221,7 +222,7 @@ export default function App() {
     setMessage("");
 
     try {
-      const user = await login(identifierType, identifier, password);
+      const user = await login(identifierType, identifier.trim(), password);
       clearSessionOnlyState();
       clearLoginInputs();
       setCurrentUser(user);
@@ -268,7 +269,7 @@ export default function App() {
     setMessage("");
 
     try {
-      const user = await scanLogin("QR_CREDENTIAL", value);
+      const user = await scanLogin("QR_CREDENTIAL", value.trim());
       clearSessionOnlyState();
       clearLoginInputs();
       setCurrentUser(user);
@@ -1366,6 +1367,10 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <footer className="copyright-footer">
+        © {COPYRIGHT_YEAR} Soumya Yadav and Abhinav Srivastav. All rights reserved.
+      </footer>
     </main>
   );
 }

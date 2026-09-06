@@ -36,7 +36,7 @@ public class AuthService implements AuthUseCase {
     @Override
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        UserAccount user = identityResolver.resolve(request.identifierType(), request.identifier())
+        UserAccount user = identityResolver.resolve(request.identifierType(), cleanValue(request.identifier()))
             .orElseThrow(() -> new BadCredentialsException("Invalid login details"))
             .getUser();
 
@@ -67,7 +67,7 @@ public class AuthService implements AuthUseCase {
             throw new BadCredentialsException("Scan login supports only QR or RFID credentials");
         }
 
-        UserAccount user = identityResolver.resolve(request.identifierType(), request.identifier())
+        UserAccount user = identityResolver.resolve(request.identifierType(), cleanValue(request.identifier()))
             .filter(identifier -> identifier.isVerified())
             .orElseThrow(() -> new BadCredentialsException("Invalid scan credential"))
             .getUser();
@@ -82,5 +82,9 @@ public class AuthService implements AuthUseCase {
 
         auditLogger.record(AuditAction.SCAN_LOGIN, user.getId(), "UserAccount", user.getId(), request.identifierType().name());
         return new LoginResponse(user.getId(), user.getFullName(), user.getRoles(), "scan-token-" + UUID.randomUUID());
+    }
+
+    private String cleanValue(String value) {
+        return value == null ? "" : value.trim();
     }
 }

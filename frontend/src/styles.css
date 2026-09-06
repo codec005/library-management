@@ -70,6 +70,7 @@ label {
   flex-direction: column;
   margin: 0 auto;
   max-width: 1280px;
+  min-height: 100vh;
   padding: 2rem;
   position: relative;
 }
@@ -888,6 +889,20 @@ label {
 
 .logout-button:hover {
   background: #fecaca;
+}
+
+.copyright-footer {
+  background: rgba(248, 250, 252, 0.96);
+  border: 1px solid #dbe4f0;
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  color: #52627a;
+  font-size: 0.9rem;
+  font-weight: 800;
+  margin-top: auto;
+  order: 99;
+  padding: 0.75rem 1rem;
+  text-align: center;
 }
 
 @media (max-width: 900px) {
