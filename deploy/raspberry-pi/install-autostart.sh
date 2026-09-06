@@ -8,6 +8,8 @@ PI_IP_ADDRESS="${PI_IP_ADDRESS:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
 DB_NAME="${DB_NAME:-library_management}"
 DB_USERNAME="${DB_USERNAME:-library_user}"
 DB_PASSWORD="${DB_PASSWORD:-library_password}"
+DB_ADMIN_USER="${DB_ADMIN_USER:-root}"
+DB_ADMIN_PASSWORD="${DB_ADMIN_PASSWORD:-}"
 BACKEND_SERVICE="/etc/systemd/system/library-backend.service"
 FRONTEND_SERVICE="/etc/systemd/system/library-frontend.service"
 CERT_DIR="$PROJECT_DIR/certs"
@@ -25,6 +27,24 @@ echo "Project directory: $PROJECT_DIR"
 echo "Service user: $SERVICE_USER"
 echo "Pi IP address: $PI_IP_ADDRESS"
 
+run_admin_sql() {
+  local sql_file
+  sql_file="$(mktemp)"
+  cat > "$sql_file"
+
+  if sudo mariadb -e "SELECT 1;" >/dev/null 2>&1; then
+    sudo mariadb < "$sql_file"
+  elif [[ -n "$DB_ADMIN_PASSWORD" ]]; then
+    mariadb -h 127.0.0.1 -P 3306 -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASSWORD" < "$sql_file"
+  else
+    echo "MariaDB root socket login failed."
+    echo "Enter the MariaDB admin password for user '$DB_ADMIN_USER' when prompted."
+    mariadb -h 127.0.0.1 -P 3306 -u "$DB_ADMIN_USER" -p < "$sql_file"
+  fi
+
+  rm -f "$sql_file"
+}
+
 install_packages() {
   if command -v apt-get >/dev/null 2>&1; then
     sudo apt-get update
@@ -38,7 +58,12 @@ setup_database() {
   sudo systemctl enable mariadb
   sudo systemctl start mariadb
 
-  sudo mariadb <<SQL
+  if mariadb -h 127.0.0.1 -P 3306 -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_NAME" -e "SELECT 1;" >/dev/null 2>&1; then
+    echo "MariaDB database '$DB_NAME' and user '$DB_USERNAME' already work."
+    return
+  fi
+
+  run_admin_sql <<SQL
 CREATE DATABASE IF NOT EXISTS ${DB_NAME};
 CREATE USER IF NOT EXISTS '${DB_USERNAME}'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
 GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USERNAME}'@'localhost';

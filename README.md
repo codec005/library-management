@@ -443,6 +443,20 @@ If the script cannot detect the Pi IP address, pass it manually:
 PI_IP_ADDRESS=192.168.1.25 ./deploy/raspberry-pi/install-autostart.sh
 ```
 
+If MariaDB shows this error:
+
+```text
+ERROR 1045 (28000): Access denied for user 'root'@'localhost' (using password: NO)
+```
+
+run the script with the MariaDB admin password:
+
+```bash
+DB_ADMIN_USER=root DB_ADMIN_PASSWORD=YOUR_MARIADB_ROOT_PASSWORD ./deploy/raspberry-pi/install-autostart.sh
+```
+
+If the database and `library_user` already exist, the script will detect that and skip the root database setup step.
+
 The script installs required packages, creates the MariaDB database/user, installs frontend dependencies, creates a local HTTPS certificate, writes systemd services, enables them, and restarts the app services.
 
 Use the manual steps below if you want to review each setup step yourself.
