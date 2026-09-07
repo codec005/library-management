@@ -9,6 +9,7 @@ import com.college.library.identity.UserAccountRepository;
 import com.college.library.identity.UserCredential;
 import com.college.library.identity.UserCredentialRepository;
 import com.college.library.identity.UserIdentifier;
+import com.college.library.identity.UserIdentifierRepository;
 import com.college.library.identity.UserRole;
 import java.util.Set;
 import org.springframework.boot.CommandLineRunner;
@@ -25,17 +26,12 @@ public class DataInitializer {
     CommandLineRunner seedData(
         UserAccountRepository userAccountRepository,
         UserCredentialRepository userCredentialRepository,
+        UserIdentifierRepository userIdentifierRepository,
         BookRepository bookRepository,
         PasswordEncoder passwordEncoder
     ) {
         return args -> {
-            if (userAccountRepository.count() == 0) {
-                UserAccount admin = new UserAccount("Admin User", "Administration", Set.of(UserRole.ADMIN));
-                admin.addIdentifier(new UserIdentifier(IdentifierType.ROLL_NUMBER, "ADMIN001", true));
-                admin.addIdentifier(new UserIdentifier(IdentifierType.QR_CREDENTIAL, "USER-QR-ADMIN001", true));
-                userAccountRepository.save(admin);
-                userCredentialRepository.save(new UserCredential(admin, passwordEncoder.encode("admin123")));
-            }
+            ensureDefaultAdmin(userAccountRepository, userCredentialRepository, userIdentifierRepository, passwordEncoder);
 
             if (bookRepository.count() == 0) {
                 Book cleanCode = new Book("Clean Code", "Robert C. Martin", "9780132350884", "Prentice Hall", "Software Engineering", 10, 14);
@@ -48,5 +44,22 @@ public class DataInitializer {
                 bookRepository.save(dbSystems);
             }
         };
+    }
+
+    private void ensureDefaultAdmin(
+        UserAccountRepository userAccountRepository,
+        UserCredentialRepository userCredentialRepository,
+        UserIdentifierRepository userIdentifierRepository,
+        PasswordEncoder passwordEncoder
+    ) {
+        if (userIdentifierRepository.findByTypeAndValue(IdentifierType.ROLL_NUMBER, "ADMIN001").isPresent()) {
+            return;
+        }
+
+        UserAccount admin = new UserAccount("Admin User", "Administration", Set.of(UserRole.ADMIN));
+        admin.addIdentifier(new UserIdentifier(IdentifierType.ROLL_NUMBER, "ADMIN001", true));
+        admin.addIdentifier(new UserIdentifier(IdentifierType.QR_CREDENTIAL, "USER-QR-ADMIN001", true));
+        userAccountRepository.save(admin);
+        userCredentialRepository.save(new UserCredential(admin, passwordEncoder.encode("admin123")));
     }
 }
