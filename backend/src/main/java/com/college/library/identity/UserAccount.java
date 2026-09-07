@@ -66,6 +66,10 @@ public class UserAccount extends BaseEntity {
         active = false;
     }
 
+    public void activate() {
+        active = true;
+    }
+
     public void addIdentifier(UserIdentifier identifier) {
         identifiers.add(identifier);
         identifier.assignTo(this);

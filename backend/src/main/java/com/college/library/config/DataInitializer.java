@@ -52,14 +52,29 @@ public class DataInitializer {
         UserIdentifierRepository userIdentifierRepository,
         PasswordEncoder passwordEncoder
     ) {
-        if (userIdentifierRepository.findByTypeAndValue(IdentifierType.ROLL_NUMBER, "ADMIN001").isPresent()) {
-            return;
-        }
+        UserAccount admin = userIdentifierRepository.findWithUserByTypeAndValue(IdentifierType.ROLL_NUMBER, "ADMIN001")
+            .map(UserIdentifier::getUser)
+            .orElseGet(() -> {
+                UserAccount newAdmin = new UserAccount("Admin User", "Administration", Set.of(UserRole.ADMIN));
+                newAdmin.addIdentifier(new UserIdentifier(IdentifierType.ROLL_NUMBER, "ADMIN001", true));
+                return newAdmin;
+            });
 
-        UserAccount admin = new UserAccount("Admin User", "Administration", Set.of(UserRole.ADMIN));
-        admin.addIdentifier(new UserIdentifier(IdentifierType.ROLL_NUMBER, "ADMIN001", true));
-        admin.addIdentifier(new UserIdentifier(IdentifierType.QR_CREDENTIAL, "USER-QR-ADMIN001", true));
+        admin.activate();
+        admin.getRoles().add(UserRole.ADMIN);
+        if (userIdentifierRepository.findByTypeAndValue(IdentifierType.QR_CREDENTIAL, "USER-QR-ADMIN001").isEmpty()) {
+            admin.addIdentifier(new UserIdentifier(IdentifierType.QR_CREDENTIAL, "USER-QR-ADMIN001", true));
+        }
         userAccountRepository.save(admin);
-        userCredentialRepository.save(new UserCredential(admin, passwordEncoder.encode("admin123")));
+
+        String passwordHash = passwordEncoder.encode("admin123");
+        userCredentialRepository.findByUser(admin)
+            .ifPresentOrElse(
+                credential -> {
+                    credential.updatePasswordHash(passwordHash);
+                    userCredentialRepository.save(credential);
+                },
+                () -> userCredentialRepository.save(new UserCredential(admin, passwordHash))
+            );
     }
 }

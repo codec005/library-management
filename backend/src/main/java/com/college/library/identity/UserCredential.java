@@ -34,4 +34,8 @@ public class UserCredential extends BaseEntity {
     public String getPasswordHash() {
         return passwordHash;
     }
+
+    public void updatePasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
 }
