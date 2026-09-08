@@ -103,18 +103,33 @@ export default function App() {
     return labels[identifierType];
   }, [identifierType]);
   const isStudent = currentUser?.roles.includes("STUDENT") ?? false;
+  const isFaculty = currentUser?.roles.includes("FACULTY") ?? false;
+  const isBorrower = isStudent || isFaculty;
   const canManageStudents = currentUser?.roles.some((role) => ["LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canManageLibrarians = currentUser?.roles.some((role) => ["ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canManageBooks = currentUser?.roles.some((role) => ["LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
+  const canIssueToStudents = canManageBooks;
+  const canViewStudentRecords = currentUser?.roles.some((role) => ["FACULTY", "LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canManageCollegeBranding = currentUser?.roles.some((role) => ["ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canShowUserRegistration = canManageStudents || canManageLibrarians;
-  const canShowManagement = canShowUserRegistration || canManageBooks;
+  const canViewUserDirectory = canManageStudents || isFaculty;
+  const canShowManagement = canShowUserRegistration || canManageBooks || canViewUserDirectory;
   const staffIssueStudentValue = staffBorrowerIdentifier.trim();
   const staffIssueBookValue = scanValue.trim();
-  const isStaffIssueReady = canManageBooks && staffIssueStudentValue.length > 0 && staffIssueBookValue.length > 0;
+  const isStaffIssueReady = canIssueToStudents && staffIssueStudentValue.length > 0 && staffIssueBookValue.length > 0;
   const visibleManagedUsers = useMemo(
-    () => users.filter((user) => canManageLibrarians || user.roles.includes("STUDENT")),
-    [canManageLibrarians, users]
+    () => users.filter((user) => {
+      if (canManageLibrarians) {
+        return true;
+      }
+
+      if (isFaculty) {
+        return user.roles.includes("STUDENT") || user.roles.includes("LIBRARIAN");
+      }
+
+      return user.roles.includes("STUDENT") || user.roles.includes("FACULTY");
+    }),
+    [canManageLibrarians, isFaculty, users]
   );
   const visibleCatalogBooks = useMemo(() => books.slice(0, 4), [books]);
   const myTotalFine = useMemo(
@@ -258,7 +273,7 @@ export default function App() {
       await loadCurrentUserViews(user);
       setMessage(`Welcome, ${user.fullName}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Login failed. Try the seeded student or librarian account.");
+      setMessage(error instanceof Error ? error.message : "Login failed. Check your staff code/email and password.");
     }
   }
 
@@ -292,6 +307,38 @@ export default function App() {
     }
 
     return type.replace(/_/g, " ");
+  }
+
+  function canViewListedUser(user: UserSummary) {
+    if (!currentUser) {
+      return false;
+    }
+
+    if (user.id === currentUser.userId || canManageLibrarians) {
+      return true;
+    }
+
+    if (isFaculty) {
+      return user.roles.includes("STUDENT") || user.roles.includes("LIBRARIAN");
+    }
+
+    return canManageStudents && (user.roles.includes("STUDENT") || user.roles.includes("FACULTY"));
+  }
+
+  function canViewIssuedBooksFor(user: UserDetailsResponse) {
+    if (!currentUser) {
+      return false;
+    }
+
+    if (user.id === currentUser.userId) {
+      return true;
+    }
+
+    if (user.roles.includes("STUDENT")) {
+      return canViewStudentRecords;
+    }
+
+    return user.roles.includes("FACULTY") && canIssueToStudents;
   }
 
   async function handleUserScanLogin(value = userScanValue) {
@@ -341,7 +388,7 @@ export default function App() {
     }
 
     try {
-      const transaction = await issueBookCopy(selectedCopy.copyId, currentUser.userId);
+      const transaction = await issueBookCopy(selectedCopy.copyId, currentUser.userId, currentUser.userId);
       await loadCurrentUserViews(currentUser);
       setBooks(await searchBooks(query));
       setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName}.`);
@@ -392,7 +439,7 @@ export default function App() {
 
   async function handleCheckStudent() {
     if (!currentUser) {
-      setMessage("Sign in as librarian or admin to check a student.");
+      setMessage("Sign in as faculty, librarian, or admin to check a student.");
       return;
     }
 
@@ -427,7 +474,7 @@ export default function App() {
     }
 
     try {
-      const transaction = await returnBookCopy(book.bookCopyId);
+      const transaction = await returnBookCopy(book.bookCopyId, currentUser.userId);
       setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
       setBooks(await searchBooks(query));
       setMessage(`${transaction.bookTitle} returned. Fine due: Rs ${transaction.fineAmount}.`);
@@ -443,7 +490,7 @@ export default function App() {
     }
 
     try {
-      const transaction = await renewTransaction(book.transactionId);
+      const transaction = await renewTransaction(book.transactionId, currentUser.userId);
       setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
       setMessage(`${transaction.bookTitle} renewed until ${transaction.dueOn}.`);
     } catch (error) {
@@ -521,7 +568,7 @@ export default function App() {
 
   async function handleViewUser(user: UserSummary) {
     if (!currentUser) {
-      setMessage("Sign in as librarian or admin to view user details.");
+      setMessage("Sign in with an authorized account to view user details.");
       return;
     }
 
@@ -541,7 +588,12 @@ export default function App() {
 
   async function handleOpenIssuedBooks() {
     if (!currentUser || !selectedUserDetails) {
-      setMessage("Select a student before viewing issued books.");
+      setMessage("Select a user before viewing issued books.");
+      return;
+    }
+
+    if (!canViewIssuedBooksFor(selectedUserDetails)) {
+      setMessage("You are not allowed to view issued books for this user.");
       return;
     }
 
@@ -751,7 +803,7 @@ export default function App() {
             <div className="panel-title">
               <Users size={22} />
               <div>
-                <h2>{isStudent ? "My Details" : "Signed-in User"}</h2>
+                <h2>{isBorrower ? "My Details" : "Signed-in User"}</h2>
                 <p>{myProfile.department}</p>
               </div>
             </div>
@@ -773,7 +825,7 @@ export default function App() {
               ))}
             </dl>
 
-            {isStudent && (
+            {isBorrower && (
               <div className="issued-list">
                 <h3>My Issued Books</h3>
                 <div className="total-fine">Total Fine: Rs {myTotalFine}</div>
@@ -822,7 +874,7 @@ export default function App() {
                 <Users size={22} />
                 <div>
                   <h2>Staff Login</h2>
-                  <p>Librarian and admin sign in with ID and password.</p>
+                  <p>Faculty, librarian, and admin sign in with ID and password.</p>
                 </div>
               </div>
 
@@ -898,7 +950,7 @@ export default function App() {
           <div className="panel-title">
             <QrCode size={22} />
             <div>
-              <h2>{canManageBooks ? "Issue Book To Student" : isStudent ? "Issue Book To Me" : "Book Scan"}</h2>
+              <h2>{canIssueToStudents ? "Issue Book To Student" : isBorrower ? "Issue Book To Me" : "Book Scan"}</h2>
               {currentUser && <p>Scan a QR code or enter the value manually.</p>}
             </div>
           </div>
@@ -907,10 +959,10 @@ export default function App() {
             <div className="empty-state">Sign in to issue books.</div>
           ) : (
             <div className="simple-scan-flow">
-              {canManageBooks && (
+              {canViewStudentRecords && (
                 <div className="staff-issue-panel">
                   <h3><span className="step-badge">1</span> Student</h3>
-                  <p>Step 1: Enter the student's roll number, or scan the student QR.</p>
+                  <p>Step 1: Enter the student's roll number, or scan the student QR to view their issued books.</p>
                   <div className="staff-issue-grid">
                     <input
                       placeholder="Student roll number"
@@ -974,18 +1026,18 @@ export default function App() {
               </div>
 
               <div className="action-row issue-action-row">
-                {isStudent && (
+                {isBorrower && (
                   <button type="button" onClick={() => void handleIssue()}>
                     Issue To Me
                   </button>
                 )}
-                {canManageBooks && (
+                {canIssueToStudents && (
                   <button type="button" disabled={!isStaffIssueReady} onClick={() => void handleStaffIssue()}>
                     Issue To Student
                   </button>
                 )}
               </div>
-              {canManageBooks && !isStaffIssueReady && (
+              {canIssueToStudents && !isStaffIssueReady && (
                 <p className="issue-hint">Enter the student roll number and the book copy QR/RFID value to issue.</p>
               )}
 
@@ -1019,7 +1071,7 @@ export default function App() {
             <Users size={22} />
             <div>
               <h2>User Registration</h2>
-              <p>Librarians can register students. Admin can register librarians and admins.</p>
+              <p>Librarians can register students. Admin can register faculty, librarians, and admins.</p>
             </div>
           </div>
 
@@ -1057,18 +1109,34 @@ export default function App() {
               }
             >
               <option value="STUDENT">Student</option>
+              {canManageLibrarians && <option value="FACULTY">Faculty</option>}
               {canManageLibrarians && <option value="LIBRARIAN">Librarian</option>}
               {canManageLibrarians && <option value="ADMIN">Admin</option>}
             </select>
             <button type="submit">Register User</button>
           </form>
 
-          {canManageStudents && (
+          {canViewUserDirectory && (
             <button type="button" className="secondary-button directory-button" onClick={() => setIsUserDirectoryOpen(true)}>
-              Open {canManageLibrarians ? "User Directory" : "Student Directory"}
+              Open {canManageLibrarians ? "User Directory" : "Student And Faculty Directory"}
             </button>
           )}
         </article>
+        )}
+
+        {canViewUserDirectory && !canShowUserRegistration && (
+          <article className="panel registration-panel">
+            <div className="panel-title">
+              <Users size={22} />
+              <div>
+                <h2>Student Records</h2>
+                <p>View student details and issued books without circulation actions.</p>
+              </div>
+            </div>
+            <button type="button" className="secondary-button directory-button" onClick={() => setIsUserDirectoryOpen(true)}>
+              Open Student And Librarian Directory
+            </button>
+          </article>
         )}
 
         {canManageBooks && (
@@ -1305,7 +1373,7 @@ export default function App() {
         </div>
       )}
 
-      {canManageStudents && isUserDirectoryOpen && (
+      {canViewUserDirectory && isUserDirectoryOpen && (
         <div
           className="modal-backdrop"
           role="dialog"
@@ -1320,8 +1388,8 @@ export default function App() {
           <div className="modal-panel">
             <div className="modal-header">
               <div>
-                <h2>{canManageLibrarians ? "User Directory" : "Student Directory"}</h2>
-                <p>Open a user to view details, generated QR credentials, issued books, and fines.</p>
+                <h2>{canManageLibrarians ? "User Directory" : isFaculty ? "Student And Librarian Directory" : "Student Directory"}</h2>
+                <p>Open a user to view details, issued books, and fines.</p>
               </div>
               <button
                 type="button"
@@ -1334,9 +1402,9 @@ export default function App() {
 
             <div className="modal-content-grid">
               <div className="user-list">
-                <h3>{canManageLibrarians ? "Registered Users" : "Students"}</h3>
+                <h3>{canManageLibrarians ? "Registered Users" : isFaculty ? "Students And Librarians" : "Students And Faculty"}</h3>
                 {visibleManagedUsers.length === 0 ? (
-                  <p>{canManageLibrarians ? "No registered users found." : "No students found."}</p>
+                  <p>{canManageLibrarians ? "No registered users found." : "No users found."}</p>
                 ) : (
                   visibleManagedUsers.map((user) => (
                     <div className="compact-row" key={user.id}>
@@ -1345,15 +1413,18 @@ export default function App() {
                         <span>{user.roles.join(", ")} · {user.department}</span>
                       </div>
                       <div className="compact-actions">
-                        {(user.roles.includes("STUDENT") || canManageLibrarians) && (
+                        {canViewListedUser(user) && (
                           <button type="button" onClick={() => void handleViewUser(user)}>
                             View Details
                           </button>
                         )}
-                        <button type="button" onClick={() => void handleGenerateUserQr(user)}>
-                          Generate QR
-                        </button>
+                        {canManageStudents && (
+                          <button type="button" onClick={() => void handleGenerateUserQr(user)}>
+                            Generate QR
+                          </button>
+                        )}
                         {((user.roles.includes("STUDENT") && canManageStudents)
+                          || (user.roles.includes("FACULTY") && canManageLibrarians)
                           || (user.roles.includes("LIBRARIAN") && canManageLibrarians)
                           || (user.roles.includes("ADMIN") && canManageLibrarians && user.id !== currentUser?.userId)) && (
                           <button type="button" className="danger-button" onClick={() => handleRemoveUser(user)}>
@@ -1387,7 +1458,7 @@ export default function App() {
                       ))}
                     </dl>
 
-                    {selectedUserDetails.roles.includes("STUDENT") && (
+                    {canViewIssuedBooksFor(selectedUserDetails) && (
                       <button type="button" className="secondary-button view-issued-button" onClick={() => void handleOpenIssuedBooks()}>
                         View Issued Books
                       </button>
@@ -1451,12 +1522,16 @@ export default function App() {
                     </div>
                     <div className="compact-actions">
                       <span className="availability">Fine Rs {book.fineAmount}</span>
-                      <button type="button" onClick={() => void handleRenewIssuedBook(book)}>
-                        Renew
-                      </button>
-                      <button type="button" className="danger-button" onClick={() => void handleReturnIssuedBook(book)}>
-                        Return
-                      </button>
+                      {canIssueToStudents && (
+                        <>
+                          <button type="button" onClick={() => void handleRenewIssuedBook(book)}>
+                            Renew
+                          </button>
+                          <button type="button" className="danger-button" onClick={() => void handleReturnIssuedBook(book)}>
+                            Return
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))

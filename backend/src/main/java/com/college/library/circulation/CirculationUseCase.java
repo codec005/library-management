@@ -5,13 +5,13 @@ import java.util.UUID;
 
 public interface CirculationUseCase {
 
-    CirculationResponse issue(IssueRequest request);
+    CirculationResponse issue(IssueRequest request, UUID actorUserId);
 
     CirculationResponse issueByIdentifier(IssueByIdentifierRequest request, UUID actorUserId);
 
-    CirculationResponse returnCopy(UUID bookCopyId);
+    CirculationResponse returnCopy(UUID bookCopyId, UUID actorUserId);
 
-    CirculationResponse renew(UUID transactionId);
+    CirculationResponse renew(UUID transactionId, UUID actorUserId);
 
     List<CirculationResponse> listIssuedBooksForUser(UUID borrowerId, UUID actorUserId);
 }

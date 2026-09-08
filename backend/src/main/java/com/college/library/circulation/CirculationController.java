@@ -25,8 +25,11 @@ public class CirculationController {
     }
 
     @PostMapping("/issue")
-    ResponseEntity<CirculationResponse> issue(@Valid @RequestBody IssueRequest request) {
-        return ResponseEntity.ok(circulationUseCase.issue(request));
+    ResponseEntity<CirculationResponse> issue(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @Valid @RequestBody IssueRequest request
+    ) {
+        return ResponseEntity.ok(circulationUseCase.issue(request, actorUserId));
     }
 
     @PostMapping("/issue/by-identifier")
@@ -38,13 +41,19 @@ public class CirculationController {
     }
 
     @PostMapping("/return/{bookCopyId}")
-    ResponseEntity<CirculationResponse> returnCopy(@PathVariable UUID bookCopyId) {
-        return ResponseEntity.ok(circulationUseCase.returnCopy(bookCopyId));
+    ResponseEntity<CirculationResponse> returnCopy(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @PathVariable UUID bookCopyId
+    ) {
+        return ResponseEntity.ok(circulationUseCase.returnCopy(bookCopyId, actorUserId));
     }
 
     @PostMapping("/renew/{transactionId}")
-    ResponseEntity<CirculationResponse> renew(@PathVariable UUID transactionId) {
-        return ResponseEntity.ok(circulationUseCase.renew(transactionId));
+    ResponseEntity<CirculationResponse> renew(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @PathVariable UUID transactionId
+    ) {
+        return ResponseEntity.ok(circulationUseCase.renew(transactionId, actorUserId));
     }
 
     @GetMapping("/users/{borrowerId}/issued")

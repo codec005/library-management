@@ -34,7 +34,7 @@ export interface UserRegistrationRequest {
   rollNumber: string;
   collegeEmail?: string;
   password: string;
-  role: "STUDENT" | "LIBRARIAN" | "ADMIN";
+  role: "STUDENT" | "FACULTY" | "LIBRARIAN" | "ADMIN";
 }
 
 export interface UserQrCredentialResponse {
@@ -217,9 +217,10 @@ export function scanBookCopy(type: ScanType, value: string) {
   return request<BookCopyScanResponse>(`/api/catalog/scan?type=${type}&value=${encodeURIComponent(value)}`);
 }
 
-export function issueBookCopy(bookCopyId: string, borrowerId: string) {
+export function issueBookCopy(bookCopyId: string, borrowerId: string, actorUserId: string) {
   return request<CirculationResponse>("/api/circulation/issue", {
     method: "POST",
+    headers: { "X-Actor-User-Id": actorUserId },
     body: JSON.stringify({ bookCopyId, borrowerId })
   });
 }
@@ -238,15 +239,17 @@ export function issueBookByIdentifier(
   });
 }
 
-export function returnBookCopy(bookCopyId: string) {
+export function returnBookCopy(bookCopyId: string, actorUserId: string) {
   return request<CirculationResponse>(`/api/circulation/return/${bookCopyId}`, {
-    method: "POST"
+    method: "POST",
+    headers: { "X-Actor-User-Id": actorUserId }
   });
 }
 
-export function renewTransaction(transactionId: string) {
+export function renewTransaction(transactionId: string, actorUserId: string) {
   return request<CirculationResponse>(`/api/circulation/renew/${transactionId}`, {
-    method: "POST"
+    method: "POST",
+    headers: { "X-Actor-User-Id": actorUserId }
   });
 }
 

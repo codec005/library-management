@@ -53,13 +53,16 @@ public class UserManagementService implements UserManagementUseCase {
             throw new IllegalStateException("Only librarian or admin can register students");
         }
 
-        if ((request.role() == UserRole.LIBRARIAN || request.role() == UserRole.ADMIN)
+        if ((request.role() == UserRole.FACULTY || request.role() == UserRole.LIBRARIAN || request.role() == UserRole.ADMIN)
             && !hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
-            throw new IllegalStateException("Only admin can register librarian or admin accounts");
+            throw new IllegalStateException("Only admin can register faculty, librarian, or admin accounts");
         }
 
-        if (request.role() != UserRole.STUDENT && request.role() != UserRole.LIBRARIAN && request.role() != UserRole.ADMIN) {
-            throw new IllegalStateException("This registration flow supports only student, librarian, and admin accounts");
+        if (request.role() != UserRole.STUDENT
+            && request.role() != UserRole.FACULTY
+            && request.role() != UserRole.LIBRARIAN
+            && request.role() != UserRole.ADMIN) {
+            throw new IllegalStateException("This registration flow supports only student, faculty, librarian, and admin accounts");
         }
 
         UserAccount user = createUser(request);
@@ -85,9 +88,9 @@ public class UserManagementService implements UserManagementUseCase {
             throw new IllegalStateException("Only librarian or admin can remove students");
         }
 
-        if (targetUser.getRoles().contains(UserRole.LIBRARIAN)
+        if ((targetUser.getRoles().contains(UserRole.FACULTY) || targetUser.getRoles().contains(UserRole.LIBRARIAN))
             && !hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
-            throw new IllegalStateException("Only admin can remove librarians");
+            throw new IllegalStateException("Only admin can remove faculty or librarians");
         }
 
         if (targetUser.getRoles().contains(UserRole.ADMIN)) {
@@ -139,10 +142,14 @@ public class UserManagementService implements UserManagementUseCase {
 
         boolean viewingSelf = actor.getId().equals(user.getId());
         boolean staffViewingStudent = user.getRoles().contains(UserRole.STUDENT)
+            && hasAnyRole(actor, UserRole.FACULTY, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
+        boolean staffViewingFaculty = user.getRoles().contains(UserRole.FACULTY)
             && hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
+        boolean facultyViewingLibrarian = user.getRoles().contains(UserRole.LIBRARIAN)
+            && hasAnyRole(actor, UserRole.FACULTY);
         boolean adminViewingStaff = hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN);
 
-        if (!viewingSelf && !staffViewingStudent && !adminViewingStaff) {
+        if (!viewingSelf && !staffViewingStudent && !staffViewingFaculty && !facultyViewingLibrarian && !adminViewingStaff) {
             throw new IllegalStateException("You are not allowed to view this user");
         }
 
@@ -154,8 +161,8 @@ public class UserManagementService implements UserManagementUseCase {
     public UserDetailsResponse getStudentDetailsByIdentifier(IdentifierType identifierType, String identifier, UUID actorUserId) {
         UserAccount actor = findActor(actorUserId);
 
-        if (!hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
-            throw new IllegalStateException("Only librarian or admin can check students");
+        if (!hasAnyRole(actor, UserRole.FACULTY, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only faculty, librarian, or admin can check students");
         }
 
         UserAccount user = userIdentifierRepository.findByTypeAndValue(identifierType, cleanValue(identifier))
