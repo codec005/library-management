@@ -39,7 +39,7 @@ public class UserAccount extends BaseEntity {
     public UserAccount(String fullName, String department, Set<UserRole> roles) {
         this.fullName = fullName;
         this.department = department;
-        this.roles = roles;
+        this.roles = new HashSet<>(roles);
     }
 
     public String getFullName() {
