@@ -21,8 +21,6 @@ Ubuntu/Debian:
 ```bash
 sudo apt update
 sudo apt install -y openjdk-21-jdk maven nodejs npm git mariadb-server
-sudo systemctl start mariadb
-sudo systemctl enable mariadb
 ```
 
 Verify tools:
@@ -32,10 +30,9 @@ java -version
 mvn -version
 node -v
 npm -v
-sudo systemctl status mariadb
 ```
 
-You should see Java **21** and MariaDB **active (running)**.
+You should see Java **21**.
 
 ---
 
