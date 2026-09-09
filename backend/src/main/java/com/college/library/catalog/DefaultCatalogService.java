@@ -64,8 +64,8 @@ public class DefaultCatalogService implements CatalogService {
 
     @Override
     @Transactional
-    public BookSummary addBook(BookCreateRequest request, UUID actorUserId) {
-        UserAccount actor = findCatalogManager(actorUserId);
+    public BookSummary addBook(BookCreateRequest request, UUID actorUserId) { //actoruserid is the acess token generated while login
+        UserAccount actor = findCatalogManager(actorUserId); //here the logic of checking whether user is admin/librariarian is done because only these users can add books
         Book book = new Book(
             request.title(),
             request.author(),
@@ -75,26 +75,26 @@ public class DefaultCatalogService implements CatalogService {
             request.finePerDay(),
             request.loanPeriodDays()
         );
-        String normalizedTitle = request.title().replaceAll("[^A-Za-z0-9]", "").toUpperCase();
+        String normalizedTitle = request.title().replaceAll("[^A-Za-z0-9]", "").toUpperCase(); // logic of generating qr code
 
         for (int index = 1; index <= request.copyCount(); index++) {
             String accessionNumber = "ACC-" + normalizedTitle + "-" + System.currentTimeMillis() + "-" + index;
             book.addCopy(new BookCopy(accessionNumber, "BOOK-QR-" + accessionNumber, request.shelfLocation()));
-        }
+        } //logic of generating qr code till here
 
-        Book savedBook = bookRepository.save(book);
-        auditLogger.record(AuditAction.BOOK_ADD, actor.getId(), "Book", savedBook.getId(), savedBook.getTitle());
+        Book savedBook = bookRepository.save(book); // add book in database
+        auditLogger.record(AuditAction.BOOK_ADD, actor.getId(), "Book", savedBook.getId(), savedBook.getTitle()); // not important for demo
         return BookSummary.from(savedBook);
     }
 
     @Override
     @Transactional
     public void removeBook(UUID bookId, UUID actorUserId) {
-        UserAccount actor = findCatalogManager(actorUserId);
-        Book book = bookRepository.findById(bookId)
+        UserAccount actor = findCatalogManager(actorUserId);// here the logic of checking whether user is admin/librariarian is done because only these users can add books
+        Book book = bookRepository.findById(bookId) // java only understands classes so find by id will return a book class from book id
             .orElseThrow(() -> new IllegalArgumentException("Book not found"));
 
-        bookRepository.delete(book);
+        bookRepository.delete(book); // book repository is a database class
         auditLogger.record(AuditAction.BOOK_REMOVE, actor.getId(), "Book", bookId, book.getTitle());
     }
 

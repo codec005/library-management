@@ -44,15 +44,15 @@ public class CirculationService implements CirculationUseCase {
 
     @Override
     @Transactional
-    public CirculationResponse issue(IssueRequest request, UUID actorUserId) {
-        UserAccount actor = findActor(actorUserId);
+    public CirculationResponse issue(IssueRequest request, UUID actorUserId) { //actoruserid determines which user is logged in and request has the details to which user has to get which book
+        UserAccount actor = findActor(actorUserId); // get user and verify whether it is a valid user(if it is a student/faculty then only they can allot books to themselves)
         BookCopy copy = bookCopyRepository.findByIdForUpdate(request.bookCopyId())
             .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
         UserAccount borrower = userAccountRepository.findById(request.borrowerId())
             .orElseThrow(() -> new IllegalArgumentException("Borrower not found"));
 
         if (!actor.getId().equals(borrower.getId()) || !hasAnyRole(borrower, UserRole.STUDENT, UserRole.FACULTY)) {
-            throw new IllegalStateException("Students and faculty can issue books only to themselves");
+            throw new IllegalStateException("Students and faculty can issue books only to themselves"); // if studenty or faculty are trying to issue book to nsomeone else other than themselves then throw this error
         }
 
         return issueCopyToBorrower(copy, borrower);

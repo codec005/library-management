@@ -18,7 +18,7 @@ public class CirculationController {
 
     private static final String ACTOR_HEADER = "X-Actor-User-Id";
 
-    private final CirculationUseCase circulationUseCase;
+    private final CirculationUseCase circulationUseCase; // here the logic of checking whether user is admin/librariarian is done because only these users can add books implemented in Circulation service
 
     public CirculationController(CirculationUseCase circulationUseCase) {
         this.circulationUseCase = circulationUseCase;

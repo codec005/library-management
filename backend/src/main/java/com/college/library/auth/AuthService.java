@@ -16,14 +16,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuthService implements AuthUseCase {
 
-    private final IdentityResolver identityResolver;
-    private final UserCredentialRepository userCredentialRepository;
+    private final IdentityResolver identityResolver; //resolver meaning it will fetch the login method(roll number /college email) and login username then using this it will create an actual user and search this user in database
+    // then from database it will fetch actual user
+    private final UserCredentialRepository userCredentialRepository; // all classes ending with repository talk to database, we do this to reduce code changes whenever new db is being used
     private final PasswordEncoder passwordEncoder;
     private final AuditLogger auditLogger;
 
     public AuthService(
         IdentityResolver identityResolver,
-        UserCredentialRepository userCredentialRepository,
+        UserCredentialRepository userCredentialRepository, //
         PasswordEncoder passwordEncoder,
         AuditLogger auditLogger
     ) {
@@ -36,7 +37,7 @@ public class AuthService implements AuthUseCase {
     @Override
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        UserAccount user = identityResolver.resolve(request.identifierType(), cleanValue(request.identifier()))
+        UserAccount user = identityResolver.resolve(request.identifierType(), cleanValue(request.identifier()))//user account is another class which is the actual user understood by backend
             .orElseThrow(() -> new BadCredentialsException("Invalid login details"))
             .getUser();
 

@@ -15,15 +15,15 @@ public class AuthController {
 
     public AuthController(AuthUseCase authUseCase) {
         this.authUseCase = authUseCase;
-    }
+    } //AuthUseCase is implemented in AuthService
 
     @PostMapping("/login")
-    ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authUseCase.login(request));
+    ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) { //backend gets input from frontend
+        return ResponseEntity.ok(authUseCase.login(request)); // when user enters /api/auth then control goes to AuthController class and when user further enters /api/auth/login control comes to this login function
     }
 
     @PostMapping("/scan-login")
     ResponseEntity<LoginResponse> scanLogin(@Valid @RequestBody ScanLoginRequest request) {
-        return ResponseEntity.ok(authUseCase.scanLogin(request));
+        return ResponseEntity.ok(authUseCase.scanLogin(request)); // when user enters /api/auth then control goes to AuthController class and when user further enters /api/auth/scan-login control comes to this scanLogin function
     }
 }

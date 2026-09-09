@@ -21,7 +21,7 @@ public class CatalogController {
 
     private static final String ACTOR_HEADER = "X-Actor-User-Id";
 
-    private final CatalogService catalogService;
+    private final CatalogService catalogService; // all create update delete operations are done here catalague service implemented in default catalouge service class
 
     public CatalogController(CatalogService catalogService) {
         this.catalogService = catalogService;
@@ -33,7 +33,7 @@ public class CatalogController {
     }
 
     @GetMapping("/scan")
-    ResponseEntity<BookCopyScanResponse> scanCopy(@RequestParam ScanType type, @RequestParam String value) {
+    ResponseEntity<BookCopyScanResponse> scanCopy(@RequestParam ScanType type, @RequestParam String value) { // frontend scans the qrcode value and sends scan type as qr and value as qr code value
         return catalogService.scanCopy(type, value)
             .map(ResponseEntity::ok)
             .orElseGet(() -> ResponseEntity.notFound().build());
@@ -44,7 +44,7 @@ public class CatalogController {
         @RequestHeader(ACTOR_HEADER) UUID actorUserId,
         @Valid @RequestBody BookCreateRequest request
     ) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(catalogService.addBook(request, actorUserId));
+        return ResponseEntity.status(HttpStatus.CREATED).body(catalogService.addBook(request, actorUserId)); // all the logic whether user is allowed to add books are implemnented in catalogue service class
     }
 
     @DeleteMapping("/books/{bookId}")
