@@ -144,14 +144,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export function login(identifierType: IdentifierType, identifier: string, password: string) {
-  return request<LoginResponse>("/api/auth/login", {
+  return request<LoginResponse>("/api/auth/login", { // /api/auth/login tells which backend class and its function is to be called
     method: "POST",
-    body: JSON.stringify({ identifierType, identifier, password })
+    body: JSON.stringify({ identifierType, identifier, password }) // body tells the details of what usernme password has the user entered in website
   });
 }
 
 export function scanLogin(identifierType: "QR_CREDENTIAL" | "RFID_CARD", identifier: string) {
-  return request<LoginResponse>("/api/auth/scan-login", {
+  return request<LoginResponse>("/api/auth/rfid-login", {
     method: "POST",
     body: JSON.stringify({ identifierType, identifier })
   });
@@ -161,7 +161,7 @@ export function searchBooks(query: string) {
   return request<BookSummary[]>(`/api/catalog/books?query=${encodeURIComponent(query)}`);
 }
 
-export function registerStudentAsGuest(payload: UserRegistrationRequest) {
+export function registerStudentAsGuest(payload: UserRegistrationRequest) { // curreentky disabled
   return request<UserSummary>("/api/users/register/student", {
     method: "POST",
     body: JSON.stringify({ ...payload, role: "STUDENT" })
