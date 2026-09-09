@@ -107,11 +107,13 @@ export default function App() {
   const isBorrower = isStudent || isFaculty;
   const canManageStudents = currentUser?.roles.some((role) => ["LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canManageLibrarians = currentUser?.roles.some((role) => ["ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
+  const canRegisterUsers = canManageLibrarians;
+  const canGenerateUserQr = canManageLibrarians;
   const canManageBooks = currentUser?.roles.some((role) => ["LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canIssueToStudents = canManageBooks;
   const canViewStudentRecords = currentUser?.roles.some((role) => ["FACULTY", "LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canManageCollegeBranding = currentUser?.roles.some((role) => ["ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
-  const canShowUserRegistration = canManageStudents || canManageLibrarians;
+  const canShowUserRegistration = canRegisterUsers;
   const canViewUserDirectory = canManageStudents || isFaculty;
   const canShowManagement = canShowUserRegistration || canManageBooks || canViewUserDirectory;
   const staffIssueStudentValue = staffBorrowerIdentifier.trim();
@@ -127,7 +129,7 @@ export default function App() {
         return user.roles.includes("STUDENT") || user.roles.includes("LIBRARIAN");
       }
 
-      return user.roles.includes("STUDENT") || user.roles.includes("FACULTY");
+      return user.roles.includes("STUDENT");
     }),
     [canManageLibrarians, isFaculty, users]
   );
@@ -322,7 +324,7 @@ export default function App() {
       return user.roles.includes("STUDENT") || user.roles.includes("LIBRARIAN");
     }
 
-    return canManageStudents && (user.roles.includes("STUDENT") || user.roles.includes("FACULTY"));
+    return canManageStudents && user.roles.includes("STUDENT");
   }
 
   function canViewIssuedBooksFor(user: UserDetailsResponse) {
@@ -338,7 +340,7 @@ export default function App() {
       return canViewStudentRecords;
     }
 
-    return user.roles.includes("FACULTY") && canIssueToStudents;
+    return user.roles.includes("FACULTY") && canManageLibrarians;
   }
 
   async function handleUserScanLogin(value = userScanValue) {
@@ -503,7 +505,7 @@ export default function App() {
     setMessage("");
 
     if (!currentUser) {
-      setMessage("Sign in as librarian or admin to register users.");
+      setMessage("Sign in as admin to register users.");
       return;
     }
 
@@ -548,7 +550,7 @@ export default function App() {
     setGeneratedQr(null);
 
     if (!currentUser) {
-      setMessage("Sign in as librarian or admin to generate user QR codes.");
+      setMessage("Sign in as admin to generate user QR codes.");
       return;
     }
 
@@ -1071,7 +1073,7 @@ export default function App() {
             <Users size={22} />
             <div>
               <h2>User Registration</h2>
-              <p>Librarians can register students. Admin can register faculty, librarians, and admins.</p>
+              <p>Only admin can register users and generate user QR codes.</p>
             </div>
           </div>
 
@@ -1118,7 +1120,7 @@ export default function App() {
 
           {canViewUserDirectory && (
             <button type="button" className="secondary-button directory-button" onClick={() => setIsUserDirectoryOpen(true)}>
-              Open {canManageLibrarians ? "User Directory" : "Student And Faculty Directory"}
+              Open {canManageLibrarians ? "User Directory" : isFaculty ? "Student And Librarian Directory" : "Student Directory"}
             </button>
           )}
         </article>
@@ -1402,7 +1404,7 @@ export default function App() {
 
             <div className="modal-content-grid">
               <div className="user-list">
-                <h3>{canManageLibrarians ? "Registered Users" : isFaculty ? "Students And Librarians" : "Students And Faculty"}</h3>
+                <h3>{canManageLibrarians ? "Registered Users" : isFaculty ? "Students And Librarians" : "Students"}</h3>
                 {visibleManagedUsers.length === 0 ? (
                   <p>{canManageLibrarians ? "No registered users found." : "No users found."}</p>
                 ) : (
@@ -1418,7 +1420,7 @@ export default function App() {
                             View Details
                           </button>
                         )}
-                        {canManageStudents && (
+                        {canGenerateUserQr && (
                           <button type="button" onClick={() => void handleGenerateUserQr(user)}>
                             Generate QR
                           </button>

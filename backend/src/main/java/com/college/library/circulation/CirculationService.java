@@ -184,7 +184,7 @@ public class CirculationService implements CirculationUseCase {
         boolean staffViewingStudent = borrower.getRoles().contains(UserRole.STUDENT)
             && hasAnyRole(actor, UserRole.FACULTY, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
         boolean staffViewingFaculty = borrower.getRoles().contains(UserRole.FACULTY)
-            && hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
+            && hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN);
 
         if (!viewingSelf && !staffViewingStudent && !staffViewingFaculty) {
             throw new IllegalStateException("You are not allowed to view issued books for this user");

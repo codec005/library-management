@@ -49,13 +49,8 @@ public class UserManagementService implements UserManagementUseCase {
     public UserSummary registerUser(UserRegistrationRequest request, UUID actorUserId) {
         UserAccount actor = findActor(actorUserId);
 
-        if (request.role() == UserRole.STUDENT && !hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
-            throw new IllegalStateException("Only librarian or admin can register students");
-        }
-
-        if ((request.role() == UserRole.FACULTY || request.role() == UserRole.LIBRARIAN || request.role() == UserRole.ADMIN)
-            && !hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
-            throw new IllegalStateException("Only admin can register faculty, librarian, or admin accounts");
+        if (!hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only admin can register users");
         }
 
         if (request.role() != UserRole.STUDENT
@@ -116,8 +111,8 @@ public class UserManagementService implements UserManagementUseCase {
     public UserQrCredentialResponse getUserQrCredential(UUID userId, UUID actorUserId) {
         UserAccount actor = findActor(actorUserId);
 
-        if (!hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
-            throw new IllegalStateException("Only librarian or admin can generate user QR codes");
+        if (!hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only admin can generate user QR codes");
         }
 
         UserAccount user = userAccountRepository.findById(userId)
@@ -144,7 +139,7 @@ public class UserManagementService implements UserManagementUseCase {
         boolean staffViewingStudent = user.getRoles().contains(UserRole.STUDENT)
             && hasAnyRole(actor, UserRole.FACULTY, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
         boolean staffViewingFaculty = user.getRoles().contains(UserRole.FACULTY)
-            && hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
+            && hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN);
         boolean facultyViewingLibrarian = user.getRoles().contains(UserRole.LIBRARIAN)
             && hasAnyRole(actor, UserRole.FACULTY);
         boolean adminViewingStaff = hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN);

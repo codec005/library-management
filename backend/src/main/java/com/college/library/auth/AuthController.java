@@ -22,7 +22,7 @@ public class AuthController {
         return ResponseEntity.ok(authUseCase.login(request)); // when user enters /api/auth then control goes to AuthController class and when user further enters /api/auth/login control comes to this login function
     }
 
-    @PostMapping("/scan-login")
+    @PostMapping("/rfid-login")
     ResponseEntity<LoginResponse> scanLogin(@Valid @RequestBody ScanLoginRequest request) {
         return ResponseEntity.ok(authUseCase.scanLogin(request)); // when user enters /api/auth then control goes to AuthController class and when user further enters /api/auth/scan-login control comes to this scanLogin function
     }
