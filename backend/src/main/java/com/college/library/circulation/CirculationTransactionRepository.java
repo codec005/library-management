@@ -12,4 +12,6 @@ public interface CirculationTransactionRepository extends JpaRepository<Circulat
     Optional<CirculationTransaction> findByBookCopyAndStatus(BookCopy bookCopy, CirculationStatus status);
 
     List<CirculationTransaction> findByBorrowerAndStatus(UserAccount borrower, CirculationStatus status);
+
+    void deleteByBorrower(UserAccount borrower);
 }

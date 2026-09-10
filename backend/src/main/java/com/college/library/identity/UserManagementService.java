@@ -2,6 +2,8 @@ package com.college.library.identity;
 
 import com.college.library.audit.AuditAction;
 import com.college.library.audit.AuditLogger;
+import com.college.library.circulation.CirculationStatus;
+import com.college.library.circulation.CirculationTransactionRepository;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -15,6 +17,7 @@ public class UserManagementService implements UserManagementUseCase {
     private final UserAccountRepository userAccountRepository;
     private final UserIdentifierRepository userIdentifierRepository;
     private final UserCredentialRepository userCredentialRepository;
+    private final CirculationTransactionRepository circulationTransactionRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogger auditLogger;
 
@@ -22,12 +25,14 @@ public class UserManagementService implements UserManagementUseCase {
         UserAccountRepository userAccountRepository,
         UserIdentifierRepository userIdentifierRepository,
         UserCredentialRepository userCredentialRepository,
+        CirculationTransactionRepository circulationTransactionRepository,
         PasswordEncoder passwordEncoder,
         AuditLogger auditLogger
     ) {
         this.userAccountRepository = userAccountRepository;
         this.userIdentifierRepository = userIdentifierRepository;
         this.userCredentialRepository = userCredentialRepository;
+        this.circulationTransactionRepository = circulationTransactionRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditLogger = auditLogger;
     }
@@ -102,8 +107,15 @@ public class UserManagementService implements UserManagementUseCase {
             throw new IllegalStateException("Super admin accounts cannot be removed from this screen");
         }
 
-        targetUser.deactivate();
-        auditLogger.record(AuditAction.USER_REMOVE, actor.getId(), "UserAccount", targetUser.getId(), "user deactivated");
+        if (!circulationTransactionRepository.findByBorrowerAndStatus(targetUser, CirculationStatus.ISSUED).isEmpty()) {
+            throw new IllegalStateException("User has issued books that must be returned before removal");
+        }
+
+        UUID targetUserId = targetUser.getId();
+        userCredentialRepository.findByUser(targetUser).ifPresent(userCredentialRepository::delete);
+        circulationTransactionRepository.deleteByBorrower(targetUser);
+        userAccountRepository.delete(targetUser);
+        auditLogger.record(AuditAction.USER_REMOVE, actor.getId(), "UserAccount", targetUserId, "user deleted");
     }
 
     @Override
