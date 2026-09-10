@@ -200,6 +200,22 @@ npm install --cache ../.npm-cache
 npm run dev
 ```
 
+### npm `ERESOLVE` / Vite version conflict
+
+If you see `Could not resolve dependency` involving `vite@8` and `@vitejs/plugin-react`, your `package.json` likely has an incompatible Vite major version. This project uses **Vite 5** with **`@vitejs/plugin-react` 4.7.0**.
+
+Reset and reinstall from the repo versions:
+
+```bash
+cd ~/library-management
+git pull
+rm -rf frontend/node_modules frontend/package-lock.json .npm-cache
+cd ~/library-management/frontend
+npm install --cache ../.npm-cache
+```
+
+Do not upgrade `vite` to 8 unless you also upgrade `@vitejs/plugin-react` to 6.x.
+
 ### npm permission or cache errors
 
 Use the project-local cache and reinstall:
