@@ -73,7 +73,8 @@ SQL
 
 install_frontend_dependencies() {
   cd "$PROJECT_DIR/frontend"
-  npm install
+  npm install --cache ../.npm-cache
+  npm audit fix --force
 }
 
 create_https_certificate() {

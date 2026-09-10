@@ -427,7 +427,8 @@ Install frontend dependencies:
 
 ```bash
 cd /home/pi/library-management/frontend
-npm install
+npm install --cache ../.npm-cache
+npm audit fix --force
 ```
 
 Quick one-command setup:
