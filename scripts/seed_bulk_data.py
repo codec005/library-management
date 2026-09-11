@@ -3,9 +3,9 @@
 Bulk-seed MariaDB for the college library management app.
 
 Creates:
-  - N catalog book rows with UNIQUE SSNs (BOOK-00000001, …)
-  - Shared display titles so several SSNs can share one name (for UI title-grouping tests)
-  - 1..max_copies physical copies per catalog SSN
+  - N catalog book rows, each with a UNIQUE SSN (BOOK-00000001, BOOK-00000002, …)
+  - Exactly one physical copy per catalog row, using the SAME SSN (so issue/scan by that SSN works)
+  - Shared display titles so several unique SSNs can share one name (for UI title-grouping tests)
   - M users across STUDENT / FACULTY / LIBRARIAN / ADMIN
   - password hash for plaintext "user" on every account (BCrypt, Spring-compatible)
 
@@ -15,15 +15,12 @@ Schema matches Hibernate tables:
 Usage:
   python3 -m venv .venv && source .venv/bin/activate
   pip install -r requirements-seed.txt
-  # Quick grouping test: 40 catalog rows, ~4 SSNs per title
-  python seed_bulk_data.py --books 40 --users 20 --editions-per-title 4 --max-copies 3
-  python seed_bulk_data.py --books 100000 --users 100000 --max-copies 10
+  # Quick grouping test: 40 unique SSNs, ~4 SSNs share each title
+  python seed_bulk_data.py --books 40 --users 20 --editions-per-title 4
+  python seed_bulk_data.py --books 100000 --users 100000
 
 Defaults connect to:
   host=127.0.0.1 port=3306 db=library_management user=library_user password=library_password
-
-WARNING: --max-copies 1000 with --books 100000 can create tens of millions of rows.
-Prefer a small max-copies (e.g. 5–20) unless you intentionally want that load.
 """
 
 from __future__ import annotations
@@ -169,7 +166,7 @@ def role_counts(total: int) -> dict[str, int]:
 def shared_title(index: int, editions_per_title: int) -> str:
     """
     Same display title for editions_per_title consecutive catalog rows.
-    SSNs stay unique (BOOK-00000001, BOOK-00000002, …).
+    Each row still gets its own unique SSN (BOOK-00000001, BOOK-00000002, …).
     First blocks use TEST_SHARED_TITLES for easy UI search.
     """
     group = (index - 1) // max(1, editions_per_title)
@@ -182,77 +179,62 @@ def shared_title(index: int, editions_per_title: int) -> str:
     )
 
 
-def copy_count_for_book(max_copies: int) -> int:
-    """
-    Prefer fewer copies (skewed), still never exceeds max_copies (<= 1000).
-    P(1)=40%, P(2-5)=35%, P(6-20)=15%, P(21-max)=10% when max is large.
-    """
-    if max_copies <= 1:
-        return 1
-    roll = random.random()
-    if roll < 0.40:
-        return 1
-    if roll < 0.75:
-        return random.randint(1, min(5, max_copies))
-    if roll < 0.90:
-        return random.randint(1, min(20, max_copies))
-    return random.randint(1, max_copies)
-
-
 def seed_books(
     conn: Connection,
     book_count: int,
-    max_copies: int,
     batch_size: int,
     editions_per_title: int,
 ) -> int:
+    """
+    One unique SSN per catalog row. One physical copy with the same SSN.
+    No BOOK-xxx-1 / BOOK-xxx-2 suffixes — issue/scan by the displayed SSN works.
+    """
     now = utc_now()
     total_copies = 0
     book_rows: list[tuple] = []
     copy_rows: list[tuple] = []
     title_counts: dict[str, int] = {}
+    used_ssns: set[str] = set()
 
     cur = conn.cursor()
     print(
-        f"Seeding {book_count:,} catalog rows "
-        f"(unique SSNs, ~{editions_per_title} editions per shared title, "
-        f"max {max_copies} copies each)..."
+        f"Seeding {book_count:,} books "
+        f"(1 unique SSN + 1 matching copy each, ~{editions_per_title} SSNs per shared title)..."
     )
 
     for i in range(1, book_count + 1):
-        base_ssn = f"BOOK-{i:08d}"
+        ssn = f"BOOK-{i:08d}"
+        if ssn in used_ssns:
+            raise RuntimeError(f"Duplicate SSN generated: {ssn}")
+        used_ssns.add(ssn)
+
         title = shared_title(i, editions_per_title)
-        # Vary metadata within the same title so the detail window shows differences
         author = AUTHORS[(i - 1) % len(AUTHORS)]
         publisher = PUBLISHERS[(i - 1) % len(PUBLISHERS)]
         category = CATEGORIES[(i - 1) % len(CATEGORIES)]
         fine_per_day = 5 + ((i - 1) % 10)
         loan_period_days = 7 if i % 3 else 14
-        n_copies = copy_count_for_book(max_copies)
         title_counts[title] = title_counts.get(title, 0) + 1
 
         book_rows.append(
-            (base_ssn, title, author, publisher, category, fine_per_day, loan_period_days)
+            (ssn, title, author, publisher, category, fine_per_day, loan_period_days)
         )
-
-        for c in range(1, n_copies + 1):
-            copy_ssn = base_ssn if n_copies == 1 else f"{base_ssn}-{c}"
-            copy_rows.append(
-                (
-                    str(uuid.uuid4()),
-                    now,
-                    now,
-                    0,
-                    f"ACC-{copy_ssn}",
-                    f"BOOK-QR-{copy_ssn}",
-                    None,
-                    f"SHELF-{(i % 50) + 1:02d}-{(c % 20) + 1:02d}",
-                    copy_ssn,
-                    "AVAILABLE",
-                    base_ssn,
-                )
+        copy_rows.append(
+            (
+                str(uuid.uuid4()),
+                now,
+                now,
+                0,
+                f"ACC-{ssn}",
+                f"BOOK-QR-{ssn}",
+                None,
+                f"SHELF-{(i % 50) + 1:02d}-01",
+                ssn,
+                "AVAILABLE",
+                ssn,
             )
-            total_copies += 1
+        )
+        total_copies += 1
 
         if len(book_rows) >= batch_size:
             _flush_books(cur, book_rows, copy_rows)
@@ -260,7 +242,7 @@ def seed_books(
             book_rows.clear()
             copy_rows.clear()
             if i % (batch_size * 5) == 0 or i == book_count:
-                print(f"  books {i:,}/{book_count:,}  copies so far {total_copies:,}")
+                print(f"  books {i:,}/{book_count:,}")
 
     if book_rows:
         _flush_books(cur, book_rows, copy_rows)
@@ -270,12 +252,12 @@ def seed_books(
         ((title, count) for title, count in title_counts.items() if count > 1),
         key=lambda item: (-item[1], item[0]),
     )
-    print(f"Books done: {book_count:,} catalog SSNs, {total_copies:,} copies")
+    print(f"Books done: {book_count:,} unique SSNs, {total_copies:,} copies (1:1)")
     print(f"  distinct titles = {len(title_counts):,}")
     if multi:
         print("  sample shared titles (for grouping tests):")
         for title, count in multi[:8]:
-            print(f"    {count}x  {title}")
+            print(f"    {count} unique SSNs → {title}")
     return total_copies
 
 
@@ -411,19 +393,13 @@ def _flush_users(
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Bulk seed library MariaDB with books and users")
-    p.add_argument("--books", type=int, default=200, help="Number of catalog book rows (unique SSNs)")
-    p.add_argument("--users", type=int, default=200, help="Number of user accounts")
+    p.add_argument("--books", type=int, default=100_000, help="Number of unique catalog SSNs (1 copy each)")
+    p.add_argument("--users", type=int, default=100_000, help="Number of user accounts")
     p.add_argument(
         "--editions-per-title",
         type=int,
         default=4,
-        help="How many different SSNs share each display title (for grouping UI). Default 4.",
-    )
-    p.add_argument(
-        "--max-copies",
-        type=int,
-        default=10,
-        help="Max physical copies per catalog SSN (cap 1000). Default 10 to avoid huge tables.",
+        help="How many different unique SSNs share each display title. Default 4.",
     )
     p.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     p.add_argument("--host", default="127.0.0.1")
@@ -450,9 +426,6 @@ def main() -> int:
     if args.books < 0 or args.users < 0:
         print("books/users must be >= 0", file=sys.stderr)
         return 2
-    if not 1 <= args.max_copies <= 1000:
-        print("--max-copies must be between 1 and 1000", file=sys.stderr)
-        return 2
     if args.editions_per_title < 1:
         print("--editions-per-title must be >= 1", file=sys.stderr)
         return 2
@@ -477,7 +450,6 @@ def main() -> int:
             seed_books(
                 conn,
                 args.books,
-                args.max_copies,
                 args.batch_size,
                 args.editions_per_title,
             )
@@ -491,6 +463,16 @@ def main() -> int:
             books = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM book_copies")
             copies = cur.fetchone()[0]
+            cur.execute(
+                """
+                SELECT COUNT(*) FROM book_copies c
+                JOIN books b ON b.ssn_number = c.book_id
+                WHERE c.ssn_number = b.ssn_number
+                """
+            )
+            matching = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(DISTINCT ssn_number) FROM book_copies")
+            distinct_copy_ssns = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*) FROM users")
             users = cur.fetchone()[0]
             cur.execute(
@@ -511,16 +493,18 @@ def main() -> int:
         conn.commit()
 
         print("\nFinal counts:")
-        print(f"  books        = {books:,}")
-        print(f"  book_copies  = {copies:,}")
-        print(f"  users        = {users:,}")
+        print(f"  books             = {books:,}")
+        print(f"  book_copies       = {copies:,}")
+        print(f"  copy SSN = book   = {matching:,}")
+        print(f"  distinct copy SSN = {distinct_copy_ssns:,}")
+        print(f"  users             = {users:,}")
         for role, n in role_rows:
             print(f"  role {role:12s} = {n:,}")
         if shared_titles:
-            print("\nDB check — titles with multiple SSNs:")
+            print("\nDB check — titles with multiple unique SSNs:")
             for title, editions in shared_titles:
                 print(f"  {editions}x  {title}")
-            print("Search eg. 'Chemistry Fundamentals' in Available Books / Full Catalogue.")
+            print("Search eg. 'Chemistry Fundamentals' then issue with BOOK-00000001.")
         print(f"\nElapsed: {time.time() - t0:.1f}s")
         print("Login example: roll STU000001 / password user")
     except Exception:
