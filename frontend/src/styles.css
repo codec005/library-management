@@ -1327,6 +1327,49 @@ label {
   max-width: 960px;
 }
 
+.all-issued-books-window {
+  max-width: 1100px;
+}
+
+.issued-books-table-wrap {
+  margin-top: 1rem;
+  max-height: min(620px, 65vh);
+  overflow: auto;
+}
+
+.issued-books-table {
+  border-collapse: collapse;
+  min-width: 900px;
+  width: 100%;
+}
+
+.issued-books-table th,
+.issued-books-table td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0.7rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.issued-books-table th {
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 1;
+}
+
+.issued-books-table td {
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .full-catalog-window {
   max-width: 920px;
 }

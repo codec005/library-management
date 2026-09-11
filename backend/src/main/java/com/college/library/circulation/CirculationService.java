@@ -6,6 +6,7 @@ import com.college.library.catalog.BookCopy;
 import com.college.library.catalog.BookCopyRepository;
 import com.college.library.catalog.BookCopyStatus;
 import com.college.library.catalog.ScanType;
+import com.college.library.common.PageResponse;
 import com.college.library.identity.IdentifierType;
 import com.college.library.identity.UserAccount;
 import com.college.library.identity.UserAccountRepository;
@@ -16,6 +17,7 @@ import jakarta.transaction.Transactional;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -348,6 +350,23 @@ public class CirculationService implements CirculationUseCase {
             return borrower.getFullName();
         }
         return borrower.getFullName() + " (" + borrowerCode + ")";
+    }
+
+    @Override
+    @Transactional
+    public PageResponse<CirculationResponse> listAllIssuedBooks(UUID actorUserId, int page, int size) {
+        UserAccount actor = findActor(actorUserId);
+
+        if (!hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only librarian or admin can view all issued books");
+        }
+
+        var pageable = PageResponse.pageable(page, size, Sort.by(Sort.Direction.DESC, "issuedOn"));
+        return PageResponse.from(
+            circulationTransactionRepository
+                .findByStatus(CirculationStatus.ISSUED, pageable)
+                .map(this::toCirculationResponse)
+        );
     }
 
     @Override

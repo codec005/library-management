@@ -112,6 +112,7 @@ export interface CirculationResponse {
   bookCopyId: string;
   borrowerName: string;
   borrowerCode?: string | null;
+  ssnNumber: string;
   accessionNumber: string;
   bookTitle: string;
   issuedOn: string;
@@ -414,6 +415,16 @@ export function renewBookByIdentifier(
 
 export function listIssuedBooksForUser(borrowerId: string, actorUserId: string) {
   return request<CirculationResponse[]>(`/api/circulation/users/${borrowerId}/issued`, {
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
+export function listAllIssuedBooks(actorUserId: string, page = 0, size = 10) {
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size)
+  });
+  return request<PageResponse<CirculationResponse>>(`/api/circulation/issued?${params.toString()}`, {
     headers: { "X-Actor-User-Id": actorUserId }
   });
 }

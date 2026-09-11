@@ -30,6 +30,7 @@ import {
   listBookCategories,
   listBookCopies,
   listIssuedBooksForUser,
+  listAllIssuedBooks,
   listUsers,
   login,
   renewTransaction,
@@ -182,6 +183,12 @@ export default function App() {
   const [generatedQr, setGeneratedQr] = useState<{ fullName: string; dataUrl: string; value: string } | null>(null);
   const [isUserDirectoryOpen, setIsUserDirectoryOpen] = useState(false);
   const [isIssuedBooksWindowOpen, setIsIssuedBooksWindowOpen] = useState(false);
+  const [isAllIssuedBooksWindowOpen, setIsAllIssuedBooksWindowOpen] = useState(false);
+  const [allIssuedBooks, setAllIssuedBooks] = useState<CirculationResponse[]>([]);
+  const [allIssuedPage, setAllIssuedPage] = useState(0);
+  const [allIssuedPageSize, setAllIssuedPageSize] = useState<PageSize>(10);
+  const [allIssuedTotalPages, setAllIssuedTotalPages] = useState(0);
+  const [allIssuedTotalElements, setAllIssuedTotalElements] = useState(0);
   const [isBookQrWindowOpen, setIsBookQrWindowOpen] = useState(false);
   const [bookCopyQrValue, setBookCopyQrValue] = useState("");
   const [bookSsnToRemove, setBookSsnToRemove] = useState("");
@@ -477,6 +484,8 @@ export default function App() {
     setGeneratedQr(null);
     setIsUserDirectoryOpen(false);
     setIsIssuedBooksWindowOpen(false);
+    setIsAllIssuedBooksWindowOpen(false);
+    setAllIssuedBooks([]);
     setIsBookQrWindowOpen(false);
     setIsScanResultOpen(false);
     setIsBookHistoryOpen(false);
@@ -535,6 +544,34 @@ export default function App() {
       setIsCatalogWindowOpen(true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to open catalog.");
+    }
+  }
+
+  async function refreshAllIssuedBooks(page = allIssuedPage, size: PageSize = allIssuedPageSize) {
+    if (!currentUser) {
+      return;
+    }
+
+    const result = await listAllIssuedBooks(currentUser.userId, page, size);
+    setAllIssuedBooks(result.content);
+    setAllIssuedPage(result.page);
+    setAllIssuedPageSize(result.size === 20 || result.size === 50 ? result.size : 10);
+    setAllIssuedTotalPages(result.totalPages);
+    setAllIssuedTotalElements(result.totalElements);
+  }
+
+  async function handleOpenAllIssuedBooksWindow() {
+    if (!currentUser) {
+      setMessage("Sign in as librarian or admin to view issued books.");
+      return;
+    }
+
+    try {
+      setAllIssuedPage(0);
+      await refreshAllIssuedBooks(0, allIssuedPageSize);
+      setIsAllIssuedBooksWindowOpen(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load issued books.");
     }
   }
 
@@ -1962,6 +1999,25 @@ export default function App() {
             </div>
           </article>
         )}
+
+        {canManageBooks && (
+          <article className="panel">
+            <div className="panel-title">
+              <BookOpen size={22} />
+              <div>
+                <h2>All Issued Books</h2>
+                <p>Open a table of every currently issued copy, with borrower and dates.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="secondary-button directory-button"
+              onClick={() => void handleOpenAllIssuedBooksWindow()}
+            >
+              Open Issued Books
+            </button>
+          </article>
+        )}
       </section>
 
       {canShowManagement && (
@@ -2873,6 +2929,83 @@ export default function App() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isAllIssuedBooksWindowOpen && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="All issued books"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAllIssuedBooksWindowOpen(false);
+            }
+          }}
+        >
+          <div className="modal-panel all-issued-books-window">
+            <div className="modal-header">
+              <div>
+                <h2>All Issued Books</h2>
+                <p>Currently issued copies across students and faculty.</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setIsAllIssuedBooksWindowOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            <div className="issued-books-table-wrap">
+              {allIssuedBooks.length === 0 ? (
+                <p className="empty-state">No books are currently issued.</p>
+              ) : (
+                <table className="issued-books-table">
+                  <thead>
+                    <tr>
+                      <th>Book SSN</th>
+                      <th>Book name</th>
+                      <th>Roll / Staff code</th>
+                      <th>Username</th>
+                      <th>Issue date</th>
+                      <th>Return date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allIssuedBooks.map((book) => (
+                      <tr key={book.transactionId}>
+                        <td>{book.ssnNumber}</td>
+                        <td>{book.bookTitle}</td>
+                        <td>{book.borrowerCode ?? "—"}</td>
+                        <td>{book.borrowerName}</td>
+                        <td>{formatDateTime(book.issuedAt, book.issuedOn)}</td>
+                        <td>{book.dueOn}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <PaginationControls
+              page={allIssuedPage}
+              totalPages={allIssuedTotalPages}
+              totalElements={allIssuedTotalElements}
+              pageSize={allIssuedPageSize}
+              label="issued books"
+              onPageChange={(nextPage) => {
+                void refreshAllIssuedBooks(nextPage, allIssuedPageSize).catch((error) =>
+                  setMessage(error instanceof Error ? error.message : "Unable to load issued books.")
+                );
+              }}
+              onPageSizeChange={(size) => {
+                setAllIssuedPageSize(size);
+                setAllIssuedPage(0);
+                void refreshAllIssuedBooks(0, size).catch((error) =>
+                  setMessage(error instanceof Error ? error.message : "Unable to load issued books.")
+                );
+              }}
+            />
           </div>
         </div>
       )}

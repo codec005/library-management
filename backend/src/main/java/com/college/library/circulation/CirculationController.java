@@ -1,5 +1,6 @@
 package com.college.library.circulation;
 
+import com.college.library.common.PageResponse;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -74,6 +76,15 @@ public class CirculationController {
         @Valid @RequestBody RenewByIdentifierRequest request
     ) {
         return ResponseEntity.ok(circulationUseCase.renewByIdentifier(request, actorUserId));
+    }
+
+    @GetMapping("/issued")
+    ResponseEntity<PageResponse<CirculationResponse>> listAllIssuedBooks(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size
+    ) {
+        return ResponseEntity.ok(circulationUseCase.listAllIssuedBooks(actorUserId, page, size));
     }
 
     @GetMapping("/users/{borrowerId}/issued")
