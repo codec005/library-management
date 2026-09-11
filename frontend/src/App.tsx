@@ -423,7 +423,7 @@ export default function App() {
     setMessage("");
 
     try {
-      const result = await scanBookCopy(type, value);
+      const result = await scanBookCopy(type, value, currentUser?.userId);
       setScanResult(result);
       return result;
     } catch (error) {
@@ -1147,7 +1147,7 @@ export default function App() {
             <div className="empty-state">Sign in to issue books.</div>
           ) : (
             <div className="simple-scan-flow">
-              {canViewStudentRecords && (
+              {canIssueToStudents && (
                 <div className="staff-issue-panel">
                   <h3><span className="step-badge">1</span> Borrower</h3>
                   <p>Step 1: Enter the student roll number or faculty staff code, or scan their QR to view issued books.</p>
@@ -1192,13 +1192,20 @@ export default function App() {
               )}
 
               <div className="staff-issue-panel">
-                <h3><span className="step-badge">2</span> Book Copy</h3>
-                <p>Step 2: Scan the book QR or enter the book QR/RFID/SSN value manually.</p>
+                <h3>
+                  <span className="step-badge">{canIssueToStudents ? "2" : "1"}</span>
+                  Book Copy
+                </h3>
+                <p>
+                  {canIssueToStudents
+                    ? "Step 2: Scan the book QR or enter the book QR/RFID/SSN value manually."
+                    : "Scan the book QR or enter the book QR/RFID/SSN value manually."}
+                </p>
                 <form className="scan-form" onSubmit={handleScan}>
                   <select value={scanType} onChange={(event) => setScanType(event.target.value as ScanType)}>
                     <option value="QR">Book QR</option>
                     <option value="RFID">RFID Tag</option>
-                    <option value="SSN">SSN Number</option>
+                    <option value="SSN">SSN</option>
                   </select>
                   <input
                     placeholder={scanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}

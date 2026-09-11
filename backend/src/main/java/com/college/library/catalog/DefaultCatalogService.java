@@ -53,14 +53,20 @@ public class DefaultCatalogService implements CatalogService {
 
     @Override
     @Transactional
-    public Optional<BookCopyScanResponse> scanCopy(ScanType type, String value) {
+    public Optional<BookCopyScanResponse> scanCopy(ScanType type, String value, UUID actorUserId) {
         Optional<BookCopyScanResponse> response = switch (type) {
             case QR -> bookCopyRepository.findByQrCodeValue(value).map(BookCopyScanResponse::from);
             case RFID -> bookCopyRepository.findByRfidTagUidHash(value).map(BookCopyScanResponse::from);
             case SSN -> bookCopyRepository.findBySsnNumber(value).map(BookCopyScanResponse::from);
         };
 
-        response.ifPresent(scan -> auditLogger.record(AuditAction.BOOK_SCAN, null, "BookCopy", scan.copyId(), type.name()));
+        response.ifPresent(scan -> auditLogger.record(
+            AuditAction.BOOK_SCAN,
+            actorUserId,
+            "BookCopy",
+            scan.copyId(),
+            type.name()
+        ));
         return response;
     }
 

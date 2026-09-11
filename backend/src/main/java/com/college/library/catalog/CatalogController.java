@@ -33,8 +33,12 @@ public class CatalogController {
     }
 
     @GetMapping("/scan")
-    ResponseEntity<BookCopyScanResponse> scanCopy(@RequestParam ScanType type, @RequestParam String value) {
-        return catalogService.scanCopy(type, value)
+    ResponseEntity<BookCopyScanResponse> scanCopy(
+        @RequestHeader(value = ACTOR_HEADER, required = false) UUID actorUserId,
+        @RequestParam ScanType type,
+        @RequestParam String value
+    ) {
+        return catalogService.scanCopy(type, value, actorUserId)
             .map(ResponseEntity::ok)
             .orElseGet(() -> ResponseEntity.notFound().build());
     }

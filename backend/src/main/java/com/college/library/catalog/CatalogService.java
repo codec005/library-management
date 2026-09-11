@@ -8,7 +8,7 @@ public interface CatalogService {
 
     List<BookSummary> searchBooks(String query);
 
-    Optional<BookCopyScanResponse> scanCopy(ScanType type, String value);
+    Optional<BookCopyScanResponse> scanCopy(ScanType type, String value, UUID actorUserId);
 
     BookSummary addBook(BookCreateRequest request, UUID actorUserId);
 

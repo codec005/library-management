@@ -242,8 +242,10 @@ export function getStudentDetailsByIdentifier(identifierType: IdentifierType, id
   });
 }
 
-export function scanBookCopy(type: ScanType, value: string) {
-  return request<BookCopyScanResponse>(`/api/catalog/scan?type=${type}&value=${encodeURIComponent(value)}`);
+export function scanBookCopy(type: ScanType, value: string, actorUserId?: string) {
+  return request<BookCopyScanResponse>(`/api/catalog/scan?type=${type}&value=${encodeURIComponent(value)}`, {
+    headers: actorUserId ? { "X-Actor-User-Id": actorUserId } : undefined
+  });
 }
 
 export function issueBookCopy(bookCopyId: string, borrowerId: string, actorUserId: string) {

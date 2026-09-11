@@ -440,22 +440,27 @@ label {
   gap: 1.25rem;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   order: 4;
+  width: 100%;
 }
 
 .portal-grid > * {
   min-width: 0;
+  max-width: 100%;
 }
 
 .management-grid {
   display: grid;
   gap: 1.25rem;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 1.25rem;
   order: 3;
+  width: 100%;
 }
 
 .panel {
   min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
   padding: 1.35rem;
 }
 
@@ -528,6 +533,9 @@ label {
 
 .scan-form {
   grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
 }
 
 .scan-form button {
@@ -818,6 +826,8 @@ label {
 .simple-scan-flow {
   display: grid;
   gap: 1rem;
+  min-width: 0;
+  width: 100%;
 }
 
 .issue-panel {
@@ -828,7 +838,26 @@ label {
   background: linear-gradient(135deg, rgba(219, 234, 254, 0.7), rgba(255, 255, 255, 0.58));
   border: 1px solid rgba(37, 99, 235, 0.12);
   border-radius: 18px;
+  min-width: 0;
   padding: 0.85rem;
+}
+
+.issue-panel .scan-form,
+.issue-panel .staff-issue-grid {
+  grid-template-columns: 1fr;
+  margin: 0;
+  width: 100%;
+}
+
+.issue-panel .scan-form button,
+.issue-panel .staff-issue-grid button {
+  justify-self: stretch;
+  width: 100%;
+}
+
+.issue-panel .qr-scanner > .secondary-button {
+  justify-self: stretch;
+  width: 100%;
 }
 
 .scan-result h3 {
@@ -865,19 +894,19 @@ label {
   border-radius: 20px;
   display: grid;
   gap: 0.75rem;
-  margin: 1rem 0;
+  margin: 0;
+  max-width: 100%;
   min-width: 0;
+  overflow: hidden;
   padding: 1rem;
   transition:
     border-color 160ms ease,
-    box-shadow 160ms ease,
-    transform 160ms ease;
+    box-shadow 160ms ease;
 }
 
 .staff-issue-panel:hover {
   border-color: rgba(37, 99, 235, 0.3);
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
 }
 
 .staff-issue-panel h3,
@@ -989,10 +1018,14 @@ label {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: minmax(0, 1fr) auto;
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
 }
 
 .scan-form > *,
 .staff-issue-grid > * {
+  max-width: 100%;
   min-width: 0;
 }
 
@@ -1107,10 +1140,15 @@ label {
   text-align: center;
 }
 
+@media (max-width: 1100px) {
+  .portal-grid,
+  .management-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 900px) {
   .portal-header,
-  .portal-grid,
-  .management-grid,
   .login-split {
     grid-template-columns: 1fr;
   }

@@ -124,7 +124,7 @@ public class AuditService implements AuditLogger, AuditUseCase {
             case BOOK_ADD -> doneBy + " added book" + (details == null ? "" : " " + details);
             case BOOK_REMOVE -> doneBy + " removed " + (event.getTargetType() == null ? "book" : friendlyTarget(event.getTargetType()))
                 + (details == null ? "" : " " + details);
-            case BOOK_SCAN -> "Book copy scanned"
+            case BOOK_SCAN -> doneBy + " scanned book copy"
                 + (details == null ? "" : " by " + details);
             case BOOK_ISSUE -> doneBy + " issued book copy"
                 + (details == null ? "" : " " + details);
