@@ -9,6 +9,7 @@ import com.college.library.catalog.ScanType;
 import com.college.library.identity.IdentifierType;
 import com.college.library.identity.UserAccount;
 import com.college.library.identity.UserAccountRepository;
+import com.college.library.identity.UserIdentifier;
 import com.college.library.identity.UserIdentifierRepository;
 import com.college.library.identity.UserRole;
 import jakarta.transaction.Transactional;
@@ -55,7 +56,7 @@ public class CirculationService implements CirculationUseCase {
             throw new IllegalStateException("Students and faculty can issue books only to themselves"); // if studenty or faculty are trying to issue book to nsomeone else other than themselves then throw this error
         }
 
-        return issueCopyToBorrower(copy, borrower);
+        return issueCopyToBorrower(copy, borrower, actor);
     }
 
     @Override
@@ -82,14 +83,14 @@ public class CirculationService implements CirculationUseCase {
             );
         }
 
-        return issueCopyToBorrower(copy, borrower);
+        return issueCopyToBorrower(copy, borrower, actor);
     }
 
     private String cleanValue(String value) {
         return value == null ? "" : value.trim();
     }
 
-    private CirculationResponse issueCopyToBorrower(BookCopy copy, UserAccount borrower) {
+    private CirculationResponse issueCopyToBorrower(BookCopy copy, UserAccount borrower, UserAccount actor) {
         if (!hasAnyRole(borrower, UserRole.STUDENT, UserRole.FACULTY)) {
             throw new IllegalStateException("Only students or faculty can borrow books");
         }
@@ -108,7 +109,8 @@ public class CirculationService implements CirculationUseCase {
         copy.markIssued();
 
         CirculationTransaction savedTransaction = circulationTransactionRepository.save(transaction);
-        auditLogger.record(AuditAction.BOOK_ISSUE, borrower.getId(), "BookCopy", copy.getId(), copy.getAccessionNumber());
+        String auditDetails = copy.getAccessionNumber() + " to " + borrower.getFullName();
+        auditLogger.record(AuditAction.BOOK_ISSUE, actor.getId(), "BookCopy", copy.getId(), auditDetails);
         return CirculationResponse.from(savedTransaction);
     }
 
@@ -143,7 +145,7 @@ public class CirculationService implements CirculationUseCase {
             : copy.getAccessionNumber();
         auditLogger.record(
             AuditAction.BOOK_RETURN,
-            transaction.getBorrower().getId(),
+            actor.getId(),
             "BookCopy",
             copy.getId(),
             auditDetails
@@ -170,7 +172,7 @@ public class CirculationService implements CirculationUseCase {
         transaction.renew(RENEWAL_DAYS);
         auditLogger.record(
             AuditAction.BOOK_RENEW,
-            transaction.getBorrower().getId(),
+            actor.getId(),
             "CirculationTransaction",
             transaction.getId(),
             "Renewed for " + RENEWAL_DAYS + " days"
@@ -198,8 +200,46 @@ public class CirculationService implements CirculationUseCase {
 
         return circulationTransactionRepository.findByBorrowerAndStatus(borrower, CirculationStatus.ISSUED)
             .stream()
-            .map(CirculationResponse::from)
+            .map(this::toCirculationResponse)
             .toList();
+    }
+
+    @Override
+    @Transactional
+    public BookCopyHistoryResponse getBookCopyHistory(UUID bookCopyId, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+
+        if (!hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only librarian or admin can view book copy history");
+        }
+
+        BookCopy copy = bookCopyRepository.findById(bookCopyId)
+            .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
+
+        List<CirculationResponse> loans = circulationTransactionRepository
+            .findByBookCopyOrderByIssuedOnDesc(copy)
+            .stream()
+            .map(this::toCirculationResponse)
+            .toList();
+
+        return new BookCopyHistoryResponse(
+            copy.getId(),
+            copy.getSsnNumber(),
+            copy.getAccessionNumber(),
+            copy.getBook().getTitle(),
+            copy.getBook().getAuthor(),
+            copy.getShelfLocation(),
+            copy.getStatus(),
+            loans
+        );
+    }
+
+    private CirculationResponse toCirculationResponse(CirculationTransaction transaction) {
+        String borrowerCode = userIdentifierRepository
+            .findByUserAndType(transaction.getBorrower(), IdentifierType.ROLL_NUMBER)
+            .map(UserIdentifier::getValue)
+            .orElse(null);
+        return CirculationResponse.from(transaction, borrowerCode);
     }
 
     private UserAccount findActor(UUID actorUserId) {

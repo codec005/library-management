@@ -309,8 +309,22 @@ public class UserManagementService implements UserManagementUseCase {
         }
 
         UserAccount savedUser = userAccountRepository.save(user);
-        userCredentialRepository.save(new UserCredential(savedUser, passwordEncoder.encode(request.password())));
+        userCredentialRepository.save(new UserCredential(savedUser, passwordEncoder.encode(resolveRegistrationPassword(request))));
         return savedUser;
+    }
+
+    private String resolveRegistrationPassword(UserRegistrationRequest request) {
+        String password = request.password() == null ? "" : request.password().trim();
+
+        if (request.role() == UserRole.STUDENT) {
+            return password.isBlank() ? "student123" : password;
+        }
+
+        if (password.isBlank()) {
+            throw new IllegalArgumentException("Password is required for non-student accounts");
+        }
+
+        return password;
     }
 
     private void ensureIdentifierAvailable(IdentifierType type, String value) {

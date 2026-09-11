@@ -11,6 +11,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.time.LocalDate;
 
 @Entity
@@ -32,6 +33,8 @@ public class CirculationTransaction extends BaseEntity {
     private LocalDate dueOn;
 
     private LocalDate returnedOn;
+
+    private Instant returnedAt;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -71,6 +74,10 @@ public class CirculationTransaction extends BaseEntity {
         return returnedOn;
     }
 
+    public Instant getReturnedAt() {
+        return returnedAt;
+    }
+
     public CirculationStatus getStatus() {
         return status;
     }
@@ -81,6 +88,7 @@ public class CirculationTransaction extends BaseEntity {
 
     public void markReturned(LocalDate returnedOn, boolean resetFine) {
         this.returnedOn = returnedOn;
+        this.returnedAt = Instant.now();
         this.status = CirculationStatus.RETURNED;
         this.fineReset = resetFine;
         this.bookCopy.markAvailable();

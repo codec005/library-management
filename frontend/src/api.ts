@@ -34,7 +34,7 @@ export interface UserRegistrationRequest {
   department: string;
   rollNumber: string;
   collegeEmail?: string;
-  password: string;
+  password?: string;
   role: "STUDENT" | "FACULTY" | "LIBRARIAN" | "ADMIN";
 }
 
@@ -100,16 +100,30 @@ export interface CirculationResponse {
   transactionId: string;
   bookCopyId: string;
   borrowerName: string;
+  borrowerCode?: string | null;
   accessionNumber: string;
   bookTitle: string;
   issuedOn: string;
+  issuedAt?: string | null;
   dueOn: string;
   returnedOn: string | null;
+  returnedAt?: string | null;
   status: "ISSUED" | "RETURNED" | "OVERDUE" | "LOST";
   loanPeriodDays: number;
   overdueDays: number;
   finePerDay: number;
   fineAmount: number;
+}
+
+export interface BookCopyHistoryResponse {
+  copyId: string;
+  ssnNumber: string;
+  accessionNumber: string;
+  title: string;
+  author: string;
+  shelfLocation: string;
+  status: BookCopyStatus;
+  loans: CirculationResponse[];
 }
 
 export interface AuditEventResponse {
@@ -287,6 +301,12 @@ export function renewTransaction(transactionId: string, actorUserId: string) {
 
 export function listIssuedBooksForUser(borrowerId: string, actorUserId: string) {
   return request<CirculationResponse[]>(`/api/circulation/users/${borrowerId}/issued`, {
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
+export function getBookCopyHistory(bookCopyId: string, actorUserId: string) {
+  return request<BookCopyHistoryResponse>(`/api/circulation/copies/${bookCopyId}/history`, {
     headers: { "X-Actor-User-Id": actorUserId }
   });
 }

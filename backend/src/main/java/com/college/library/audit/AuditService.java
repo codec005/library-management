@@ -125,7 +125,7 @@ public class AuditService implements AuditLogger, AuditUseCase {
             case BOOK_REMOVE -> doneBy + " removed " + (event.getTargetType() == null ? "book" : friendlyTarget(event.getTargetType()))
                 + (details == null ? "" : " " + details);
             case BOOK_SCAN -> doneBy + " scanned book copy"
-                + (details == null ? "" : " by " + details);
+                + (details == null ? "" : " via " + friendlyScanDetails(details));
             case BOOK_ISSUE -> doneBy + " issued book copy"
                 + (details == null ? "" : " " + details);
             case BOOK_RETURN -> doneBy + " returned book copy"
@@ -251,6 +251,16 @@ public class AuditService implements AuditLogger, AuditUseCase {
             case "SSN" -> "SSN";
             default -> value.toLowerCase().replace('_', ' ');
         };
+    }
+
+    private String friendlyScanDetails(String details) {
+        String[] parts = details.split("·", 2);
+        String method = friendlyIdentifier(parts[0].trim());
+        if (parts.length == 1 || parts[1].isBlank()) {
+            return method;
+        }
+
+        return method + " " + parts[1].trim();
     }
 
     private String friendlyTarget(String targetType) {

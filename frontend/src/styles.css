@@ -448,6 +448,26 @@ label {
   max-width: 100%;
 }
 
+.available-books-panel {
+  display: flex;
+  flex-direction: column;
+  grid-column: 1 / -1;
+  min-height: 0;
+}
+
+.portal-grid:has(.profile-panel) .available-books-panel {
+  grid-column: span 2;
+}
+
+.available-books-panel .book-list {
+  flex: 1 1 auto;
+  min-height: 12rem;
+}
+
+.available-books-panel .directory-button {
+  margin-top: auto;
+}
+
 .management-grid {
   display: grid;
   gap: 1.25rem;
@@ -457,10 +477,34 @@ label {
   width: 100%;
 }
 
+.book-history-panel {
+  grid-column: 1 / -1;
+}
+
+.book-history-form {
+  margin-top: 1rem;
+}
+
+.book-history-result {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+  min-width: 0;
+}
+
+.book-loan-history .book-row {
+  align-items: flex-start;
+}
+
+.book-loan-history .book-row p {
+  color: var(--muted);
+  margin: 0.35rem 0 0;
+}
+
 .panel {
   min-width: 0;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow: visible;
   padding: 1.35rem;
 }
 
@@ -820,6 +864,9 @@ label {
   background: rgba(248, 250, 252, 0.82);
   border: 1px dashed rgba(148, 163, 184, 0.5);
   border-radius: 18px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 1.25rem;
 }
 
@@ -830,8 +877,28 @@ label {
   width: 100%;
 }
 
+.issue-steps-grid {
+  align-items: stretch;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+  width: 100%;
+}
+
+.issue-steps-grid.single-step {
+  grid-template-columns: minmax(0, 34rem);
+  justify-content: center;
+}
+
+.self-issue-flow .issue-action-row {
+  justify-content: center;
+}
+
 .issue-panel {
   border-color: rgba(37, 99, 235, 0.2);
+  grid-column: 1 / -1;
+  width: 100%;
 }
 
 .issue-panel .panel-title {
@@ -872,8 +939,21 @@ label {
 .scan-result dl {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 1rem 0 0;
+}
+
+.issue-panel .scan-result dl,
+.book-history-panel .scan-result dl {
+  grid-template-columns: 1fr;
+}
+
+.checked-student-card,
+.scan-result h3,
+.scan-result p,
+.scan-result dd {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .action-row {
@@ -897,7 +977,7 @@ label {
   margin: 0;
   max-width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   padding: 1rem;
   transition:
     border-color 160ms ease,
@@ -1145,6 +1225,12 @@ label {
   .management-grid {
     grid-template-columns: 1fr;
   }
+
+  .available-books-panel,
+  .issue-panel,
+  .book-history-panel {
+    grid-column: auto;
+  }
 }
 
 @media (max-width: 900px) {
@@ -1159,6 +1245,16 @@ label {
   }
 
   .branding-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .issue-steps-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .issue-steps-grid.single-step {
     grid-template-columns: 1fr;
   }
 }

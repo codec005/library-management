@@ -8,7 +8,7 @@ public record UserRegistrationRequest(
     @NotBlank String department,
     @NotBlank String rollNumber,
     String collegeEmail,
-    @NotBlank String password,
+    String password,
     @NotNull UserRole role
 ) {
 }

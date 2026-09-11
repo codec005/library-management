@@ -65,4 +65,12 @@ public class CirculationController {
     ) {
         return ResponseEntity.ok(circulationUseCase.listIssuedBooksForUser(borrowerId, actorUserId));
     }
+
+    @GetMapping("/copies/{bookCopyId}/history")
+    ResponseEntity<BookCopyHistoryResponse> getBookCopyHistory(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @PathVariable UUID bookCopyId
+    ) {
+        return ResponseEntity.ok(circulationUseCase.getBookCopyHistory(bookCopyId, actorUserId));
+    }
 }

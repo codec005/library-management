@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import QrScanner from "./QrScanner";
 import {
   AuditEventResponse,
+  BookCopyHistoryResponse,
   BookCopyScanResponse,
   BookCopySummary,
   BookCreateRequest,
@@ -17,6 +18,7 @@ import {
   UserSummary,
   UserUpdateRequest,
   addBook,
+  getBookCopyHistory,
   getStudentDetailsByIdentifier,
   getUserQrCredential,
   getUserDetails,
@@ -132,6 +134,9 @@ export default function App() {
   });
   const [message, setMessage] = useState("");
   const [resetFineOnReturn, setResetFineOnReturn] = useState<Record<string, boolean>>({});
+  const [bookHistoryScanType, setBookHistoryScanType] = useState<ScanType>("SSN");
+  const [bookHistoryScanValue, setBookHistoryScanValue] = useState("");
+  const [bookCopyHistory, setBookCopyHistory] = useState<BookCopyHistoryResponse | null>(null);
 
   const activeRole = useMemo(() => currentUser?.roles[0] ?? "Guest", [currentUser]);
   const loginIdentifierLabel = useMemo(() => {
@@ -360,6 +365,14 @@ export default function App() {
     }
   }
 
+  function formatDateTime(value?: string | null, fallbackDate?: string | null) {
+    if (value) {
+      return new Date(value).toLocaleString();
+    }
+
+    return fallbackDate ?? "—";
+  }
+
   function formatIdentifierLabel(type: IdentifierType, roles: string[]) {
     if (type === "ROLL_NUMBER") {
       return roles.includes("STUDENT") ? "Roll Number" : "Staff Code";
@@ -433,8 +446,37 @@ export default function App() {
     }
   }
 
+  async function handleLookupBookHistory(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+
+    if (!currentUser) {
+      setMessage("Sign in as librarian or admin to view book history.");
+      return;
+    }
+
+    const value = bookHistoryScanValue.trim();
+    if (!value) {
+      setMessage("Enter or scan a book QR/RFID/SSN value to view history.");
+      return;
+    }
+
+    try {
+      const scanned = await scanBookCopy(bookHistoryScanType, value, currentUser.userId);
+      const history = await getBookCopyHistory(scanned.copyId, currentUser.userId);
+      setBookCopyHistory(history);
+      setBookHistoryScanValue(value);
+      setMessage(`Loaded history for ${history.title}.`);
+    } catch (error) {
+      setBookCopyHistory(null);
+      setMessage(error instanceof Error ? error.message : "Unable to load book copy history.");
+    }
+  }
+
   async function handleScan(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!scanValue.trim()) {
+      return;
+    }
     await resolveBookCopy();
   }
 
@@ -579,10 +621,18 @@ export default function App() {
       return;
     }
 
+    if (registrationForm.role !== "STUDENT" && !registrationForm.password?.trim()) {
+      setMessage("Password is required for faculty, librarian, and admin accounts.");
+      return;
+    }
+
     try {
       const payload = {
         ...registrationForm,
-        collegeEmail: registrationForm.collegeEmail || undefined
+        collegeEmail: registrationForm.collegeEmail || undefined,
+        password: registrationForm.role === "STUDENT"
+          ? undefined
+          : registrationForm.password?.trim()
       };
       const user = await registerUser(payload, currentUser.userId);
 
@@ -595,7 +645,11 @@ export default function App() {
         password: "",
         role: "STUDENT"
       });
-      setMessage(`${user.fullName} registered as ${user.roles[0]}.`);
+      setMessage(
+        registrationForm.role === "STUDENT"
+          ? `${user.fullName} registered as STUDENT with default password student123.`
+          : `${user.fullName} registered as ${user.roles[0]}.`
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Registration failed.");
     }
@@ -1093,7 +1147,7 @@ export default function App() {
           </div>
         )}
 
-        <article className="panel">
+        <article className="panel available-books-panel">
           <div className="panel-title">
             <BookOpen size={22} />
             <div>
@@ -1146,85 +1200,89 @@ export default function App() {
           {!currentUser ? (
             <div className="empty-state">Sign in to issue books.</div>
           ) : (
-            <div className="simple-scan-flow">
-              {canIssueToStudents && (
-                <div className="staff-issue-panel">
-                  <h3><span className="step-badge">1</span> Borrower</h3>
-                  <p>Step 1: Enter the student roll number or faculty staff code, or scan their QR to view issued books.</p>
-                  <div className="staff-issue-grid">
-                    <input
-                      placeholder="Roll number or staff code"
-                      value={staffBorrowerIdentifierType === "ROLL_NUMBER" ? staffBorrowerIdentifier : ""}
-                      onChange={(event) => {
-                        setStaffBorrowerIdentifierType("ROLL_NUMBER");
-                        setStaffBorrowerIdentifier(event.target.value);
+            <div className={`simple-scan-flow${canIssueToStudents ? "" : " self-issue-flow"}`}>
+              <div className={`issue-steps-grid${canIssueToStudents ? "" : " single-step"}`}>
+                {canIssueToStudents && (
+                  <div className="staff-issue-panel">
+                    <h3><span className="step-badge">1</span> Borrower</h3>
+                    <p>Step 1: Enter the student roll number or faculty staff code, or scan their QR to view issued books.</p>
+                    <div className="staff-issue-grid">
+                      <input
+                        placeholder="Roll number or staff code"
+                        value={staffBorrowerIdentifierType === "ROLL_NUMBER" ? staffBorrowerIdentifier : ""}
+                        onChange={(event) => {
+                          setStaffBorrowerIdentifierType("ROLL_NUMBER");
+                          setStaffBorrowerIdentifier(event.target.value);
+                          setCheckedStudent(null);
+                        }}
+                      />
+                      <button type="button" disabled={!staffIssueStudentValue} onClick={() => void handleCheckStudent()}>
+                        Check Borrower
+                      </button>
+                    </div>
+                    <QrScanner
+                      label="Scan Borrower QR"
+                      onDetected={(value) => {
+                        setStaffBorrowerIdentifierType("QR_CREDENTIAL");
+                        setStaffBorrowerIdentifier(value);
                         setCheckedStudent(null);
                       }}
                     />
-                    <button type="button" disabled={!staffIssueStudentValue} onClick={() => void handleCheckStudent()}>
-                      Check Borrower
-                    </button>
+                    {staffBorrowerIdentifierType === "QR_CREDENTIAL" && staffBorrowerIdentifier && (
+                      <p className="scan-captured-note">Borrower QR captured from scanner. Click Check Borrower to verify.</p>
+                    )}
+                    {checkedStudent && (
+                      <div className="checked-student-card">
+                        <strong>{checkedStudent.fullName}</strong>
+                        <span>
+                          {checkedStudent.department}
+                          {" · "}
+                          {checkedStudent.roles.includes("FACULTY") ? "Staff Code" : "Roll Number"}
+                          {" "}
+                          {checkedStudent.identifiers.find((item) => item.type === "ROLL_NUMBER")?.value ?? "Not set"}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <QrScanner
-                    label="Scan Borrower QR"
-                    onDetected={(value) => {
-                      setStaffBorrowerIdentifierType("QR_CREDENTIAL");
-                      setStaffBorrowerIdentifier(value);
-                      setCheckedStudent(null);
-                    }}
-                  />
-                  {staffBorrowerIdentifierType === "QR_CREDENTIAL" && staffBorrowerIdentifier && (
-                    <p className="scan-captured-note">Borrower QR captured from scanner. Click Check Borrower to verify.</p>
-                  )}
-                  {checkedStudent && (
-                    <div className="checked-student-card">
-                      <strong>{checkedStudent.fullName}</strong>
-                      <span>
-                        {checkedStudent.department}
-                        {" · "}
-                        {checkedStudent.roles.includes("FACULTY") ? "Staff Code" : "Roll Number"}
-                        {" "}
-                        {checkedStudent.identifiers.find((item) => item.type === "ROLL_NUMBER")?.value ?? "Not set"}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
 
-              <div className="staff-issue-panel">
-                <h3>
-                  <span className="step-badge">{canIssueToStudents ? "2" : "1"}</span>
-                  Book Copy
-                </h3>
-                <p>
-                  {canIssueToStudents
-                    ? "Step 2: Scan the book QR or enter the book QR/RFID/SSN value manually."
-                    : "Scan the book QR or enter the book QR/RFID/SSN value manually."}
-                </p>
-                <form className="scan-form" onSubmit={handleScan}>
-                  <select value={scanType} onChange={(event) => setScanType(event.target.value as ScanType)}>
-                    <option value="QR">Book QR</option>
-                    <option value="RFID">RFID Tag</option>
-                    <option value="SSN">SSN</option>
-                  </select>
-                  <input
-                    placeholder={scanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}
-                    value={scanValue}
-                    onChange={(event) => {
-                      setScanValue(event.target.value);
-                      setScanResult(null);
+                <div className="staff-issue-panel">
+                  <h3>
+                    <span className="step-badge">{canIssueToStudents ? "2" : "1"}</span>
+                    Book Copy
+                  </h3>
+                  <p>
+                    {canIssueToStudents
+                      ? "Step 2: Scan the book QR or enter the book QR/RFID/SSN value manually."
+                      : "Scan the book QR or enter the book QR/RFID/SSN value manually."}
+                  </p>
+                  <form className="scan-form" onSubmit={handleScan}>
+                    <select value={scanType} onChange={(event) => setScanType(event.target.value as ScanType)}>
+                      <option value="QR">Book QR</option>
+                      <option value="RFID">RFID Tag</option>
+                      <option value="SSN">SSN</option>
+                    </select>
+                    <input
+                      placeholder={scanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}
+                      value={scanValue}
+                      onChange={(event) => {
+                        setScanValue(event.target.value);
+                        setScanResult(null);
+                      }}
+                    />
+                    <button type="submit" disabled={!staffIssueBookValue}>
+                      Check Copy
+                    </button>
+                  </form>
+                  <QrScanner
+                    label="Scan Book QR"
+                    onDetected={(value) => {
+                      setScanType("QR");
+                      setScanValue(value);
+                      void resolveBookCopy("QR", value);
                     }}
                   />
-                  <button type="submit">Check Copy</button>
-                </form>
-                <QrScanner
-                  label="Scan Book QR"
-                  onDetected={(value) => {
-                    setScanType("QR");
-                    setScanValue(value);
-                    void resolveBookCopy("QR", value);
-                  }}
-                />
+                </div>
               </div>
 
               <div className="action-row issue-action-row">
@@ -1302,16 +1360,25 @@ export default function App() {
               value={registrationForm.collegeEmail}
               onChange={(event) => setRegistrationForm({ ...registrationForm, collegeEmail: event.target.value })}
             />
-            <input
-              placeholder="Password / PIN"
-              type="password"
-              value={registrationForm.password}
-              onChange={(event) => setRegistrationForm({ ...registrationForm, password: event.target.value })}
-            />
+            {registrationForm.role !== "STUDENT" && (
+              <input
+                placeholder="Password / PIN"
+                type="password"
+                value={registrationForm.password ?? ""}
+                onChange={(event) => setRegistrationForm({ ...registrationForm, password: event.target.value })}
+              />
+            )}
+            {registrationForm.role === "STUDENT" && (
+              <p className="list-note">Student accounts use default password student123.</p>
+            )}
             <select
               value={registrationForm.role}
               onChange={(event) =>
-                setRegistrationForm({ ...registrationForm, role: event.target.value as UserRegistrationRequest["role"] })
+                setRegistrationForm({
+                  ...registrationForm,
+                  role: event.target.value as UserRegistrationRequest["role"],
+                  password: event.target.value === "STUDENT" ? "" : registrationForm.password
+                })
               }
             >
               <option value="STUDENT">Student</option>
@@ -1499,6 +1566,101 @@ export default function App() {
                 }}
               />
             </div>
+          </article>
+        )}
+
+        {canManageBooks && (
+          <article className="panel book-history-panel">
+            <div className="panel-title">
+              <Search size={22} />
+              <div>
+                <h2>Book Copy History</h2>
+                <p>Librarian and admin can look up who borrowed a copy, issue/return dates, and fines.</p>
+              </div>
+            </div>
+
+            <form className="scan-form book-history-form" onSubmit={(event) => void handleLookupBookHistory(event)}>
+              <select
+                value={bookHistoryScanType}
+                onChange={(event) => setBookHistoryScanType(event.target.value as ScanType)}
+              >
+                <option value="QR">Book QR</option>
+                <option value="RFID">RFID Tag</option>
+                <option value="SSN">SSN</option>
+              </select>
+              <input
+                placeholder={bookHistoryScanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}
+                value={bookHistoryScanValue}
+                onChange={(event) => {
+                  setBookHistoryScanValue(event.target.value);
+                  setBookCopyHistory(null);
+                }}
+              />
+              <button type="submit">View History</button>
+            </form>
+            <QrScanner
+              label="Scan Book QR For History"
+              onDetected={(value) => {
+                setBookHistoryScanType("QR");
+                setBookHistoryScanValue(value);
+              }}
+            />
+
+            {bookCopyHistory && (
+              <div className="book-history-result">
+                <div className="scan-result">
+                  <span className="badge">{bookCopyHistory.status}</span>
+                  <h3>{bookCopyHistory.title}</h3>
+                  <p>{bookCopyHistory.author}</p>
+                  <dl>
+                    <div>
+                      <dt>SSN</dt>
+                      <dd>{bookCopyHistory.ssnNumber}</dd>
+                    </div>
+                    <div>
+                      <dt>Accession</dt>
+                      <dd>{bookCopyHistory.accessionNumber}</dd>
+                    </div>
+                    <div>
+                      <dt>Shelf</dt>
+                      <dd>{bookCopyHistory.shelfLocation}</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div className="issued-list book-loan-history">
+                  <h3>Loan history</h3>
+                  {bookCopyHistory.loans.length === 0 ? (
+                    <p>No issue or return records for this copy yet.</p>
+                  ) : (
+                    bookCopyHistory.loans.map((loan) => (
+                      <div key={loan.transactionId} className="book-row">
+                        <div>
+                          <strong>
+                            {loan.borrowerName}
+                            {loan.borrowerCode ? ` (${loan.borrowerCode})` : ""}
+                          </strong>
+                          <p>
+                            Issued {formatDateTime(loan.issuedAt, loan.issuedOn)}
+                            {" · Due "}
+                            {loan.dueOn}
+                            {loan.returnedOn || loan.returnedAt
+                              ? ` · Returned ${formatDateTime(loan.returnedAt, loan.returnedOn)}`
+                              : " · Not returned"}
+                          </p>
+                          <p>
+                            Status {loan.status}
+                            {" · Fine Rs "}
+                            {loan.fineAmount}
+                            {loan.overdueDays > 0 ? ` (${loan.overdueDays} overdue day(s))` : ""}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </article>
         )}
       </section>
@@ -1845,7 +2007,21 @@ export default function App() {
                     <div>
                       <strong>{book.bookTitle}</strong>
                       <span>
-                        {book.accessionNumber} · Return by {book.dueOn} · Loan {book.loanPeriodDays} days · {book.overdueDays} overdue days · Rs {book.finePerDay}/day
+                        {book.accessionNumber}
+                        {" · Issued "}
+                        {formatDateTime(book.issuedAt, book.issuedOn)}
+                        {" · Due "}
+                        {book.dueOn}
+                        {book.returnedOn || book.returnedAt
+                          ? ` · Returned ${formatDateTime(book.returnedAt, book.returnedOn)}`
+                          : " · Not returned"}
+                        {" · Loan "}
+                        {book.loanPeriodDays}
+                        {" days · "}
+                        {book.overdueDays}
+                        {" overdue days · Rs "}
+                        {book.finePerDay}
+                        /day
                       </span>
                     </div>
                     <div className="compact-actions">

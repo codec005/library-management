@@ -65,7 +65,7 @@ public class DefaultCatalogService implements CatalogService {
             actorUserId,
             "BookCopy",
             scan.copyId(),
-            type.name()
+            type.name() + " · " + value
         ));
         return response;
     }
