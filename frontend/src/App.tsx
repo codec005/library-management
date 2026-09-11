@@ -229,11 +229,13 @@ export default function App() {
   const [returnScanType, setReturnScanType] = useState<ScanType>("QR");
   const [returnScanValue, setReturnScanValue] = useState("");
   const [returnResetFine, setReturnResetFine] = useState(false);
+  const [returnCheckedBorrower, setReturnCheckedBorrower] = useState<UserDetailsResponse | null>(null);
   const [renewBorrowerIdentifierType, setRenewBorrowerIdentifierType] = useState<IdentifierType>("ROLL_NUMBER");
   const [renewBorrowerIdentifier, setRenewBorrowerIdentifier] = useState("");
   const [renewScanType, setRenewScanType] = useState<ScanType>("QR");
   const [renewScanValue, setRenewScanValue] = useState("");
   const [renewLoanDays, setRenewLoanDays] = useState(7);
+  const [renewCheckedBorrower, setRenewCheckedBorrower] = useState<UserDetailsResponse | null>(null);
   const [scanResult, setScanResult] = useState<BookCopyScanResponse | null>(null);
   const [isScanResultOpen, setIsScanResultOpen] = useState(false);
   const [isBookHistoryOpen, setIsBookHistoryOpen] = useState(false);
@@ -887,6 +889,78 @@ export default function App() {
     }
   }
 
+  async function checkBorrowerByIdentifier(
+    identifierType: IdentifierType,
+    identifierValue: string,
+    onSuccess: (student: UserDetailsResponse) => void,
+    onFailure: () => void
+  ) {
+    if (!currentUser) {
+      setMessage("Sign in as librarian or admin to check a borrower.");
+      return;
+    }
+
+    const borrowerIdentifier = identifierValue.trim();
+    if (!borrowerIdentifier) {
+      setMessage("Enter the roll number/staff code or scan the borrower QR first.");
+      return;
+    }
+
+    try {
+      const student = await getStudentDetailsByIdentifier(
+        identifierType,
+        borrowerIdentifier,
+        currentUser.userId
+      );
+      onSuccess(student);
+      setSelectedUserDetails(student);
+      setSelectedUserIssuedBooks(await listIssuedBooksForUser(student.id, currentUser.userId));
+      const roleLabel = student.roles.includes("FACULTY") ? "Faculty" : "Student";
+      setMessage(`${roleLabel} found: ${student.fullName}.`);
+    } catch (error) {
+      onFailure();
+      setMessage(error instanceof Error ? error.message : "Borrower check failed.");
+    }
+  }
+
+  async function handleCheckReturnBorrower() {
+    await checkBorrowerByIdentifier(
+      returnBorrowerIdentifierType,
+      returnBorrowerIdentifier,
+      (student) => setReturnCheckedBorrower(student),
+      () => setReturnCheckedBorrower(null)
+    );
+  }
+
+  async function handleCheckRenewBorrower() {
+    await checkBorrowerByIdentifier(
+      renewBorrowerIdentifierType,
+      renewBorrowerIdentifier,
+      (student) => setRenewCheckedBorrower(student),
+      () => setRenewCheckedBorrower(null)
+    );
+  }
+
+  async function handleCheckReturnCopy(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    const value = returnScanValue.trim();
+    if (!value) {
+      setMessage("Enter or scan a book QR/RFID/SSN value to check the copy.");
+      return;
+    }
+    await resolveBookCopy(returnScanType, value);
+  }
+
+  async function handleCheckRenewCopy(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    const value = renewScanValue.trim();
+    if (!value) {
+      setMessage("Enter or scan a book QR/RFID/SSN value to check the copy.");
+      return;
+    }
+    await resolveBookCopy(renewScanType, value);
+  }
+
   async function handleReturnIssuedBook(book: CirculationResponse) {
     if (!currentUser || !selectedUserDetails) {
       setMessage("Select a student before returning a book.");
@@ -935,6 +1009,7 @@ export default function App() {
       setReturnBorrowerIdentifierType("ROLL_NUMBER");
       setReturnScanValue("");
       setReturnResetFine(false);
+      setReturnCheckedBorrower(null);
       await refreshAvailableBooks(query);
       if (selectedUserDetails?.id) {
         setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
@@ -977,6 +1052,7 @@ export default function App() {
       setRenewBorrowerIdentifierType("ROLL_NUMBER");
       setRenewScanValue("");
       setRenewLoanDays(Math.min(7, transaction.loanPeriodDays));
+      setRenewCheckedBorrower(null);
       if (selectedUserDetails?.id) {
         setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
       }
@@ -1934,31 +2010,46 @@ export default function App() {
                       onChange={(event) => {
                         setReturnBorrowerIdentifierType("ROLL_NUMBER");
                         setReturnBorrowerIdentifier(event.target.value);
+                        setReturnCheckedBorrower(null);
                       }}
                     />
+                    <button
+                      type="button"
+                      disabled={!returnBorrowerValue}
+                      onClick={() => void handleCheckReturnBorrower()}
+                    >
+                      Check Borrower
+                    </button>
                   </div>
                   <QrScanner
                     label="Scan Borrower QR"
                     onDetected={(value) => {
                       setReturnBorrowerIdentifierType("QR_CREDENTIAL");
                       setReturnBorrowerIdentifier(value);
+                      setReturnCheckedBorrower(null);
                     }}
                   />
                   {returnBorrowerIdentifierType === "QR_CREDENTIAL" && returnBorrowerIdentifier && (
-                    <p className="scan-captured-note">Borrower QR captured from scanner.</p>
+                    <p className="scan-captured-note">Borrower QR captured from scanner. Click Check Borrower to verify.</p>
+                  )}
+                  {returnCheckedBorrower && (
+                    <div className="checked-student-card">
+                      <strong>{returnCheckedBorrower.fullName}</strong>
+                      <span>
+                        {returnCheckedBorrower.department}
+                        {" · "}
+                        {returnCheckedBorrower.roles.includes("FACULTY") ? "Staff Code" : "Roll Number"}
+                        {" "}
+                        {returnCheckedBorrower.identifiers.find((item) => item.type === "ROLL_NUMBER")?.value ?? "Not set"}
+                      </span>
+                    </div>
                   )}
                 </div>
 
                 <div className="staff-issue-panel">
                   <h3><span className="step-badge">2</span> Book</h3>
                   <p>Scan book QR or enter book QR/RFID/SSN.</p>
-                  <form
-                    className="scan-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void handleStaffReturnByScan();
-                    }}
-                  >
+                  <form className="scan-form" onSubmit={(event) => void handleCheckReturnCopy(event)}>
                     <select value={returnScanType} onChange={(event) => setReturnScanType(event.target.value as ScanType)}>
                       <option value="QR">Book QR</option>
                       <option value="RFID">RFID Tag</option>
@@ -1967,14 +2058,22 @@ export default function App() {
                     <input
                       placeholder={returnScanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}
                       value={returnScanValue}
-                      onChange={(event) => setReturnScanValue(event.target.value)}
+                      onChange={(event) => {
+                        setReturnScanValue(event.target.value);
+                        setScanResult(null);
+                        setIsScanResultOpen(false);
+                      }}
                     />
+                    <button type="submit" disabled={!returnBookValue}>
+                      Check Copy
+                    </button>
                   </form>
                   <QrScanner
                     label="Scan Book QR"
                     onDetected={(value) => {
                       setReturnScanType("QR");
                       setReturnScanValue(value);
+                      void resolveBookCopy("QR", value);
                     }}
                   />
                 </div>
@@ -2023,31 +2122,46 @@ export default function App() {
                       onChange={(event) => {
                         setRenewBorrowerIdentifierType("ROLL_NUMBER");
                         setRenewBorrowerIdentifier(event.target.value);
+                        setRenewCheckedBorrower(null);
                       }}
                     />
+                    <button
+                      type="button"
+                      disabled={!renewBorrowerValue}
+                      onClick={() => void handleCheckRenewBorrower()}
+                    >
+                      Check Borrower
+                    </button>
                   </div>
                   <QrScanner
                     label="Scan Borrower QR"
                     onDetected={(value) => {
                       setRenewBorrowerIdentifierType("QR_CREDENTIAL");
                       setRenewBorrowerIdentifier(value);
+                      setRenewCheckedBorrower(null);
                     }}
                   />
                   {renewBorrowerIdentifierType === "QR_CREDENTIAL" && renewBorrowerIdentifier && (
-                    <p className="scan-captured-note">Borrower QR captured from scanner.</p>
+                    <p className="scan-captured-note">Borrower QR captured from scanner. Click Check Borrower to verify.</p>
+                  )}
+                  {renewCheckedBorrower && (
+                    <div className="checked-student-card">
+                      <strong>{renewCheckedBorrower.fullName}</strong>
+                      <span>
+                        {renewCheckedBorrower.department}
+                        {" · "}
+                        {renewCheckedBorrower.roles.includes("FACULTY") ? "Staff Code" : "Roll Number"}
+                        {" "}
+                        {renewCheckedBorrower.identifiers.find((item) => item.type === "ROLL_NUMBER")?.value ?? "Not set"}
+                      </span>
+                    </div>
                   )}
                 </div>
 
                 <div className="staff-issue-panel">
                   <h3><span className="step-badge">2</span> Book</h3>
                   <p>Scan book QR or enter book QR/RFID/SSN.</p>
-                  <form
-                    className="scan-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void handleStaffRenewByScan();
-                    }}
-                  >
+                  <form className="scan-form" onSubmit={(event) => void handleCheckRenewCopy(event)}>
                     <select value={renewScanType} onChange={(event) => setRenewScanType(event.target.value as ScanType)}>
                       <option value="QR">Book QR</option>
                       <option value="RFID">RFID Tag</option>
@@ -2056,14 +2170,22 @@ export default function App() {
                     <input
                       placeholder={renewScanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}
                       value={renewScanValue}
-                      onChange={(event) => setRenewScanValue(event.target.value)}
+                      onChange={(event) => {
+                        setRenewScanValue(event.target.value);
+                        setScanResult(null);
+                        setIsScanResultOpen(false);
+                      }}
                     />
+                    <button type="submit" disabled={!renewBookValue}>
+                      Check Copy
+                    </button>
                   </form>
                   <QrScanner
                     label="Scan Book QR"
                     onDetected={(value) => {
                       setRenewScanType("QR");
                       setRenewScanValue(value);
+                      void resolveBookCopy("QR", value);
                     }}
                   />
                 </div>
