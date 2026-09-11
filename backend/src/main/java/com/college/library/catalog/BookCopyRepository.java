@@ -25,4 +25,6 @@ public interface BookCopyRepository extends JpaRepository<BookCopy, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select copy from BookCopy copy where copy.rfidTagUidHash = :rfidTagUidHash")
     Optional<BookCopy> findByRfidTagUidHashForUpdate(@Param("rfidTagUidHash") String rfidTagUidHash);
+
+    long countByBook(Book book);
 }

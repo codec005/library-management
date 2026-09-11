@@ -121,7 +121,7 @@ public class CirculationService implements CirculationUseCase {
 
     @Override
     @Transactional
-    public CirculationResponse returnCopy(UUID bookCopyId, UUID actorUserId) {
+    public CirculationResponse returnCopy(UUID bookCopyId, boolean resetFine, UUID actorUserId) {
         UserAccount actor = findActor(actorUserId);
 
         if (!hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
@@ -134,13 +134,16 @@ public class CirculationService implements CirculationUseCase {
             .findByBookCopyAndStatus(copy, CirculationStatus.ISSUED)
             .orElseThrow(() -> new IllegalStateException("Book copy is not currently issued"));
 
-        transaction.markReturned(LocalDate.now());
+        transaction.markReturned(LocalDate.now(), resetFine);
+        String auditDetails = resetFine
+            ? copy.getAccessionNumber() + " (fine reset)"
+            : copy.getAccessionNumber();
         auditLogger.record(
             AuditAction.BOOK_RETURN,
             transaction.getBorrower().getId(),
             "BookCopy",
             copy.getId(),
-            copy.getAccessionNumber()
+            auditDetails
         );
         return CirculationResponse.from(transaction);
     }

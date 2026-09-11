@@ -1,9 +1,9 @@
 package com.college.library.catalog;
 
-import com.college.library.common.BaseEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.util.HashSet;
@@ -11,15 +11,17 @@ import java.util.Set;
 
 @Entity
 @Table(name = "books")
-public class Book extends BaseEntity {
+public class Book {
+
+    @Id
+    @Column(name = "ssn_number", nullable = false)
+    private String ssnNumber;
 
     @Column(nullable = false)
     private String title;
 
     @Column(nullable = false)
     private String author;
-
-    private String isbn;
 
     private String publisher;
 
@@ -39,21 +41,25 @@ public class Book extends BaseEntity {
     }
 
     public Book(
+        String ssnNumber,
         String title,
         String author,
-        String isbn,
         String publisher,
         String category,
         long finePerDay,
         int loanPeriodDays
     ) {
+        this.ssnNumber = ssnNumber;
         this.title = title;
         this.author = author;
-        this.isbn = isbn;
         this.publisher = publisher;
         this.category = category;
         this.finePerDay = finePerDay;
         this.loanPeriodDays = loanPeriodDays;
+    }
+
+    public String getSsnNumber() {
+        return ssnNumber;
     }
 
     public String getTitle() {
@@ -62,10 +68,6 @@ public class Book extends BaseEntity {
 
     public String getAuthor() {
         return author;
-    }
-
-    public String getIsbn() {
-        return isbn;
     }
 
     public String getPublisher() {

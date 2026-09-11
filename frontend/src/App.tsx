@@ -78,9 +78,9 @@ export default function App() {
     role: "STUDENT"
   });
   const [bookForm, setBookForm] = useState<BookCreateRequest>({
+    ssnNumber: "",
     title: "",
     author: "",
-    isbn: "",
     publisher: "",
     category: "",
     shelfLocation: "",
@@ -89,6 +89,7 @@ export default function App() {
     copyCount: 1
   });
   const [message, setMessage] = useState("");
+  const [resetFineOnReturn, setResetFineOnReturn] = useState<Record<string, boolean>>({});
 
   const activeRole = useMemo(() => currentUser?.roles[0] ?? "Guest", [currentUser]);
   const loginIdentifierLabel = useMemo(() => {
@@ -475,11 +476,19 @@ export default function App() {
       return;
     }
 
+    const resetFine = resetFineOnReturn[book.transactionId] ?? false;
+
     try {
-      const transaction = await returnBookCopy(book.bookCopyId, currentUser.userId);
+      const transaction = await returnBookCopy(book.bookCopyId, currentUser.userId, resetFine);
+      setResetFineOnReturn((current) => {
+        const next = { ...current };
+        delete next[book.transactionId];
+        return next;
+      });
       setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
       setBooks(await searchBooks(query));
-      setMessage(`${transaction.bookTitle} returned. Fine due: Rs ${transaction.fineAmount}.`);
+      const fineMessage = transaction.fineAmount === 0 ? "No fine." : `Fine due: Rs ${transaction.fineAmount}.`;
+      setMessage(`${transaction.bookTitle} returned. ${fineMessage}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Return failed.");
     }
@@ -638,9 +647,9 @@ export default function App() {
       const book = await addBook(bookForm, currentUser.userId);
       setBooks(await searchBooks(query));
       setBookForm({
+        ssnNumber: "",
         title: "",
         author: "",
-        isbn: "",
         publisher: "",
         category: "",
         shelfLocation: "",
@@ -657,7 +666,7 @@ export default function App() {
       }
 
       try {
-        const copies = await listBookCopies(book.id, currentUser.userId);
+        const copies = await listBookCopies(book.ssnNumber, currentUser.userId);
         const qrImages = await Promise.all(
           copies.map(async (copy) => ({
             ...copy,
@@ -924,11 +933,11 @@ export default function App() {
 
           <div className="book-list">
             {visibleCatalogBooks.map((book) => (
-              <div className="book-row" key={book.id}>
+              <div className="book-row" key={book.ssnNumber}>
                 <div>
                   <strong>{book.title}</strong>
                   <span>
-                    {book.author} · {book.category}
+                    SSN {book.ssnNumber} · {book.author} · {book.category}
                   </span>
                 </div>
                 <div className="book-actions">
@@ -1169,11 +1178,12 @@ export default function App() {
                 />
               </label>
               <label>
-                ISBN
+                SSN Number
                 <input
-                  placeholder="Optional ISBN number"
-                  value={bookForm.isbn}
-                  onChange={(event) => setBookForm({ ...bookForm, isbn: event.target.value })}
+                  required
+                  placeholder="Example: 2512130300019"
+                  value={bookForm.ssnNumber}
+                  onChange={(event) => setBookForm({ ...bookForm, ssnNumber: event.target.value })}
                 />
               </label>
               <label>
@@ -1317,10 +1327,10 @@ export default function App() {
                 <div className="empty-state">No books found.</div>
               ) : (
                 catalogBooks.map((book) => (
-                  <div className="book-row" key={book.id}>
+                  <div className="book-row" key={book.ssnNumber}>
                     <div>
                       <strong>{book.title}</strong>
-                      <span>{book.author} · {book.category}</span>
+                      <span>SSN {book.ssnNumber} · {book.author} · {book.category}</span>
                     </div>
                     <div className="book-actions">
                       <span className="availability">{book.availableCopies}/{book.totalCopies} available</span>
@@ -1524,6 +1534,21 @@ export default function App() {
                     </div>
                     <div className="compact-actions">
                       <span className="availability">Fine Rs {book.fineAmount}</span>
+                      {canIssueToStudents && book.fineAmount > 0 && (
+                        <label className="inline-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={resetFineOnReturn[book.transactionId] ?? false}
+                            onChange={(event) =>
+                              setResetFineOnReturn((current) => ({
+                                ...current,
+                                [book.transactionId]: event.target.checked
+                              }))
+                            }
+                          />
+                          Reset fine (Rs 0)
+                        </label>
+                      )}
                       {canIssueToStudents && (
                         <>
                           <button type="button" onClick={() => void handleRenewIssuedBook(book)}>

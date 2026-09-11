@@ -9,7 +9,7 @@ public interface CirculationUseCase {
 
     CirculationResponse issueByIdentifier(IssueByIdentifierRequest request, UUID actorUserId);
 
-    CirculationResponse returnCopy(UUID bookCopyId, UUID actorUserId);
+    CirculationResponse returnCopy(UUID bookCopyId, boolean resetFine, UUID actorUserId);
 
     CirculationResponse renew(UUID transactionId, UUID actorUserId);
 

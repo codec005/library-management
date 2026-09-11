@@ -37,6 +37,9 @@ public class CirculationTransaction extends BaseEntity {
     @Column(nullable = false)
     private CirculationStatus status;
 
+    @Column(nullable = false)
+    private boolean fineReset = false;
+
     protected CirculationTransaction() {
     }
 
@@ -72,9 +75,14 @@ public class CirculationTransaction extends BaseEntity {
         return status;
     }
 
-    public void markReturned(LocalDate returnedOn) {
+    public boolean isFineReset() {
+        return fineReset;
+    }
+
+    public void markReturned(LocalDate returnedOn, boolean resetFine) {
         this.returnedOn = returnedOn;
         this.status = CirculationStatus.RETURNED;
+        this.fineReset = resetFine;
         this.bookCopy.markAvailable();
     }
 

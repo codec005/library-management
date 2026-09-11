@@ -4,6 +4,7 @@ import java.util.UUID;
 
 public record BookCopySummary(
     UUID copyId,
+    String ssnNumber,
     String title,
     String accessionNumber,
     String qrCodeValue,
@@ -13,6 +14,7 @@ public record BookCopySummary(
     static BookCopySummary from(BookCopy copy) {
         return new BookCopySummary(
             copy.getId(),
+            copy.getSsnNumber(),
             copy.getBook().getTitle(),
             copy.getAccessionNumber(),
             copy.getQrCodeValue(),

@@ -21,7 +21,7 @@ public class CatalogController {
 
     private static final String ACTOR_HEADER = "X-Actor-User-Id";
 
-    private final CatalogService catalogService; // all create update delete operations are done here catalague service implemented in default catalouge service class
+    private final CatalogService catalogService;
 
     public CatalogController(CatalogService catalogService) {
         this.catalogService = catalogService;
@@ -33,7 +33,7 @@ public class CatalogController {
     }
 
     @GetMapping("/scan")
-    ResponseEntity<BookCopyScanResponse> scanCopy(@RequestParam ScanType type, @RequestParam String value) { // frontend scans the qrcode value and sends scan type as qr and value as qr code value
+    ResponseEntity<BookCopyScanResponse> scanCopy(@RequestParam ScanType type, @RequestParam String value) {
         return catalogService.scanCopy(type, value)
             .map(ResponseEntity::ok)
             .orElseGet(() -> ResponseEntity.notFound().build());
@@ -44,24 +44,24 @@ public class CatalogController {
         @RequestHeader(ACTOR_HEADER) UUID actorUserId,
         @Valid @RequestBody BookCreateRequest request
     ) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(catalogService.addBook(request, actorUserId)); // all the logic whether user is allowed to add books are implemnented in catalogue service class
+        return ResponseEntity.status(HttpStatus.CREATED).body(catalogService.addBook(request, actorUserId));
     }
 
-    @DeleteMapping("/books/{bookId}")
+    @DeleteMapping("/books/{ssnNumber}")
     ResponseEntity<Void> removeBook(
         @RequestHeader(ACTOR_HEADER) UUID actorUserId,
-        @PathVariable UUID bookId
+        @PathVariable String ssnNumber
     ) {
-        catalogService.removeBook(bookId, actorUserId);
+        catalogService.removeBook(ssnNumber, actorUserId);
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/books/{bookId}/copies")
+    @GetMapping("/books/{ssnNumber}/copies")
     ResponseEntity<List<BookCopySummary>> listBookCopies(
         @RequestHeader(ACTOR_HEADER) UUID actorUserId,
-        @PathVariable UUID bookId
+        @PathVariable String ssnNumber
     ) {
-        return ResponseEntity.ok(catalogService.listBookCopies(bookId, actorUserId));
+        return ResponseEntity.ok(catalogService.listBookCopies(ssnNumber, actorUserId));
     }
 
     @GetMapping("/copies/by-qr")

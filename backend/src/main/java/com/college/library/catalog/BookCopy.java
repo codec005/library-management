@@ -15,6 +15,9 @@ import jakarta.persistence.Table;
 public class BookCopy extends BaseEntity {
 
     @Column(nullable = false, unique = true)
+    private String ssnNumber;
+
+    @Column(nullable = false, unique = true)
     private String accessionNumber;
 
     @Column(nullable = false, unique = true)
@@ -37,10 +40,15 @@ public class BookCopy extends BaseEntity {
     protected BookCopy() {
     }
 
-    public BookCopy(String accessionNumber, String qrCodeValue, String shelfLocation) {
+    public BookCopy(String ssnNumber, String accessionNumber, String qrCodeValue, String shelfLocation) {
+        this.ssnNumber = ssnNumber;
         this.accessionNumber = accessionNumber;
         this.qrCodeValue = qrCodeValue;
         this.shelfLocation = shelfLocation;
+    }
+
+    public String getSsnNumber() {
+        return ssnNumber;
     }
 
     public String getAccessionNumber() {
@@ -73,10 +81,6 @@ public class BookCopy extends BaseEntity {
 
     public void markAvailable() {
         status = BookCopyStatus.AVAILABLE;
-    }
-
-    public void markRemoved() {
-        status = BookCopyStatus.REMOVED;
     }
 
     void assignTo(Book book) {

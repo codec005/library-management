@@ -1,9 +1,7 @@
 package com.college.library.catalog;
 
-import java.util.UUID;
-
 public record BookSummary(
-    UUID id,
+    String ssnNumber,
     String title,
     String author,
     String category,
@@ -21,7 +19,7 @@ public record BookSummary(
             .count();
 
         return new BookSummary(
-            book.getId(),
+            book.getSsnNumber(),
             book.getTitle(),
             book.getAuthor(),
             book.getCategory(),

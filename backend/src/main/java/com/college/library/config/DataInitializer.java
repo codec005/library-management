@@ -34,13 +34,13 @@ public class DataInitializer {
             ensureDefaultAdmin(userAccountRepository, userCredentialRepository, userIdentifierRepository, passwordEncoder);
 
             if (bookRepository.count() == 0) {
-                Book cleanCode = new Book("Clean Code", "Robert C. Martin", "9780132350884", "Prentice Hall", "Software Engineering", 10, 14);
-                cleanCode.addCopy(new BookCopy("ACC-0001", "BOOK-QR-ACC-0001", "A1-R2-S3"));
-                cleanCode.addCopy(new BookCopy("ACC-0002", "BOOK-QR-ACC-0002", "A1-R2-S4"));
+                Book cleanCode = new Book("9780132350884", "Clean Code", "Robert C. Martin", "Prentice Hall", "Software Engineering", 10, 14);
+                cleanCode.addCopy(new BookCopy("9780132350884-1", "ACC-0001", "BOOK-QR-ACC-0001", "A1-R2-S3"));
+                cleanCode.addCopy(new BookCopy("9780132350884-2", "ACC-0002", "BOOK-QR-ACC-0002", "A1-R2-S4"));
                 bookRepository.save(cleanCode);
 
-                Book dbSystems = new Book("Database System Concepts", "Abraham Silberschatz", "9780073523323", "McGraw Hill", "Database", 8, 14);
-                dbSystems.addCopy(new BookCopy("ACC-0003", "BOOK-QR-ACC-0003", "B2-R1-S1"));
+                Book dbSystems = new Book("9780073523323", "Database System Concepts", "Abraham Silberschatz", "McGraw Hill", "Database", 8, 14);
+                dbSystems.addCopy(new BookCopy("9780073523323", "ACC-0003", "BOOK-QR-ACC-0003", "B2-R1-S1"));
                 bookRepository.save(dbSystems);
             }
         };

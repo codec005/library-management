@@ -2,6 +2,7 @@ package com.college.library.catalog;
 
 import com.college.library.audit.AuditAction;
 import com.college.library.audit.AuditLogger;
+import com.college.library.circulation.CirculationTransactionRepository;
 import com.college.library.identity.UserAccount;
 import com.college.library.identity.UserAccountRepository;
 import com.college.library.identity.UserRole;
@@ -18,17 +19,20 @@ public class DefaultCatalogService implements CatalogService {
     private final BookRepository bookRepository;
     private final BookCopyRepository bookCopyRepository;
     private final UserAccountRepository userAccountRepository;
+    private final CirculationTransactionRepository circulationTransactionRepository;
     private final AuditLogger auditLogger;
 
     public DefaultCatalogService(
         BookRepository bookRepository,
         BookCopyRepository bookCopyRepository,
         UserAccountRepository userAccountRepository,
+        CirculationTransactionRepository circulationTransactionRepository,
         AuditLogger auditLogger
     ) {
         this.bookRepository = bookRepository;
         this.bookCopyRepository = bookCopyRepository;
         this.userAccountRepository = userAccountRepository;
+        this.circulationTransactionRepository = circulationTransactionRepository;
         this.auditLogger = auditLogger;
     }
 
@@ -37,7 +41,8 @@ public class DefaultCatalogService implements CatalogService {
     public List<BookSummary> searchBooks(String query) {
         List<Book> books = query.isBlank()
             ? bookRepository.findAll()
-            : bookRepository.findByTitleContainingIgnoreCaseOrAuthorContainingIgnoreCaseOrCategoryContainingIgnoreCase(
+            : bookRepository.findByTitleContainingIgnoreCaseOrAuthorContainingIgnoreCaseOrCategoryContainingIgnoreCaseOrSsnNumberContainingIgnoreCase(
+                query,
                 query,
                 query,
                 query
@@ -50,12 +55,8 @@ public class DefaultCatalogService implements CatalogService {
     @Transactional
     public Optional<BookCopyScanResponse> scanCopy(ScanType type, String value) {
         Optional<BookCopyScanResponse> response = switch (type) {
-            case QR -> bookCopyRepository.findByQrCodeValue(value)
-                .filter(copy -> copy.getStatus() != BookCopyStatus.REMOVED)
-                .map(BookCopyScanResponse::from);
-            case RFID -> bookCopyRepository.findByRfidTagUidHash(value)
-                .filter(copy -> copy.getStatus() != BookCopyStatus.REMOVED)
-                .map(BookCopyScanResponse::from);
+            case QR -> bookCopyRepository.findByQrCodeValue(value).map(BookCopyScanResponse::from);
+            case RFID -> bookCopyRepository.findByRfidTagUidHash(value).map(BookCopyScanResponse::from);
         };
 
         response.ifPresent(scan -> auditLogger.record(AuditAction.BOOK_SCAN, null, "BookCopy", scan.copyId(), type.name()));
@@ -64,49 +65,69 @@ public class DefaultCatalogService implements CatalogService {
 
     @Override
     @Transactional
-    public BookSummary addBook(BookCreateRequest request, UUID actorUserId) { //actoruserid is the acess token generated while login
-        UserAccount actor = findCatalogManager(actorUserId); //here the logic of checking whether user is admin/librariarian is done because only these users can add books
+    public BookSummary addBook(BookCreateRequest request, UUID actorUserId) {
+        UserAccount actor = findCatalogManager(actorUserId);
+        String baseSsn = cleanValue(request.ssnNumber());
+
+        if (bookRepository.existsById(baseSsn)) {
+            throw new IllegalStateException("SSN number already exists");
+        }
+
         Book book = new Book(
+            baseSsn,
             request.title(),
             request.author(),
-            request.isbn(),
             request.publisher(),
             request.category(),
             request.finePerDay(),
             request.loanPeriodDays()
         );
-        String normalizedTitle = request.title().replaceAll("[^A-Za-z0-9]", "").toUpperCase(); // logic of generating qr code
+        String normalizedTitle = request.title().replaceAll("[^A-Za-z0-9]", "").toUpperCase();
 
         for (int index = 1; index <= request.copyCount(); index++) {
+            String copySsn = request.copyCount() == 1 ? baseSsn : baseSsn + "-" + index;
             String accessionNumber = "ACC-" + normalizedTitle + "-" + System.currentTimeMillis() + "-" + index;
-            book.addCopy(new BookCopy(accessionNumber, "BOOK-QR-" + accessionNumber, request.shelfLocation()));
-        } //logic of generating qr code till here
+            book.addCopy(new BookCopy(copySsn, accessionNumber, "BOOK-QR-" + accessionNumber, request.shelfLocation()));
+        }
 
-        Book savedBook = bookRepository.save(book); // add book in database
-        auditLogger.record(AuditAction.BOOK_ADD, actor.getId(), "Book", savedBook.getId(), savedBook.getTitle()); // not important for demo
+        Book savedBook = bookRepository.save(book);
+        auditLogger.record(
+            AuditAction.BOOK_ADD,
+            actor.getId(),
+            "Book",
+            null,
+            savedBook.getSsnNumber() + ": " + savedBook.getTitle()
+        );
         return BookSummary.from(savedBook);
     }
 
     @Override
     @Transactional
-    public void removeBook(UUID bookId, UUID actorUserId) {
-        UserAccount actor = findCatalogManager(actorUserId);// here the logic of checking whether user is admin/librariarian is done because only these users can add books
-        Book book = bookRepository.findById(bookId) // java only understands classes so find by id will return a book class from book id
+    public void removeBook(String ssnNumber, UUID actorUserId) {
+        UserAccount actor = findCatalogManager(actorUserId);
+        Book book = bookRepository.findById(cleanValue(ssnNumber))
             .orElseThrow(() -> new IllegalArgumentException("Book not found"));
 
-        bookRepository.delete(book); // book repository is a database class
-        auditLogger.record(AuditAction.BOOK_REMOVE, actor.getId(), "Book", bookId, book.getTitle());
+        ensureNoIssuedCopies(book);
+        deleteCirculationHistory(book);
+        bookRepository.delete(book);
+        auditLogger.record(
+            AuditAction.BOOK_REMOVE,
+            actor.getId(),
+            "Book",
+            null,
+            book.getSsnNumber() + ": " + book.getTitle()
+        );
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<BookCopySummary> listBookCopies(UUID bookId, UUID actorUserId) {
+    public List<BookCopySummary> listBookCopies(String ssnNumber, UUID actorUserId) {
         findCatalogManager(actorUserId);
-        Book book = bookRepository.findById(bookId)
+        Book book = bookRepository.findById(cleanValue(ssnNumber))
             .orElseThrow(() -> new IllegalArgumentException("Book not found"));
 
         return book.getCopies().stream()
-            .filter(copy -> copy.getStatus() != BookCopyStatus.REMOVED)
             .map(BookCopySummary::from)
             .toList();
     }
@@ -116,7 +137,6 @@ public class DefaultCatalogService implements CatalogService {
     public BookCopySummary getBookCopyByQrCode(String qrCodeValue, UUID actorUserId) {
         findCatalogManager(actorUserId);
         BookCopy copy = bookCopyRepository.findByQrCodeValue(qrCodeValue)
-            .filter(bookCopy -> bookCopy.getStatus() != BookCopyStatus.REMOVED)
             .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
 
         return BookCopySummary.from(copy);
@@ -133,10 +153,41 @@ public class DefaultCatalogService implements CatalogService {
             throw new IllegalStateException("Issued book copies must be returned before removal");
         }
 
+        Book book = copy.getBook();
+        String bookSsn = book.getSsnNumber();
+        String copySsn = copy.getSsnNumber();
         UUID copyId = copy.getId();
-        String accessionNumber = copy.getAccessionNumber();
-        copy.markRemoved();
-        auditLogger.record(AuditAction.BOOK_REMOVE, actor.getId(), "BookCopy", copyId, accessionNumber);
+        circulationTransactionRepository.deleteByBookCopy(copy);
+        bookCopyRepository.delete(copy);
+
+        if (bookCopyRepository.countByBook(book) == 0) {
+            bookRepository.delete(book);
+        }
+
+        auditLogger.record(
+            AuditAction.BOOK_REMOVE,
+            actor.getId(),
+            "BookCopy",
+            copyId,
+            copySsn + " (" + bookSsn + ")"
+        );
+    }
+
+    private void ensureNoIssuedCopies(Book book) {
+        boolean hasIssuedCopy = book.getCopies().stream()
+            .anyMatch(copy -> copy.getStatus() == BookCopyStatus.ISSUED);
+
+        if (hasIssuedCopy) {
+            throw new IllegalStateException("Issued book copies must be returned before removal");
+        }
+    }
+
+    private void deleteCirculationHistory(Book book) {
+        book.getCopies().forEach(circulationTransactionRepository::deleteByBookCopy);
+    }
+
+    private String cleanValue(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private UserAccount findCatalogManager(UUID actorUserId) {

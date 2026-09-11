@@ -44,9 +44,9 @@ export interface UserQrCredentialResponse {
 }
 
 export interface BookCreateRequest {
+  ssnNumber: string;
   title: string;
   author: string;
-  isbn?: string;
   publisher?: string;
   category: string;
   shelfLocation: string;
@@ -56,7 +56,7 @@ export interface BookCreateRequest {
 }
 
 export interface BookSummary {
-  id: string;
+  ssnNumber: string;
   title: string;
   author: string;
   category: string;
@@ -68,6 +68,7 @@ export interface BookSummary {
 
 export interface BookCopyScanResponse {
   copyId: string;
+  ssnNumber: string;
   accessionNumber: string;
   title: string;
   author: string;
@@ -77,6 +78,7 @@ export interface BookCopyScanResponse {
 
 export interface BookCopySummary {
   copyId: string;
+  ssnNumber: string;
   title: string;
   accessionNumber: string;
   qrCodeValue: string;
@@ -239,10 +241,11 @@ export function issueBookByIdentifier(
   });
 }
 
-export function returnBookCopy(bookCopyId: string, actorUserId: string) {
+export function returnBookCopy(bookCopyId: string, actorUserId: string, resetFine = false) {
   return request<CirculationResponse>(`/api/circulation/return/${bookCopyId}`, {
     method: "POST",
-    headers: { "X-Actor-User-Id": actorUserId }
+    headers: { "X-Actor-User-Id": actorUserId },
+    body: JSON.stringify({ resetFine })
   });
 }
 
@@ -267,15 +270,15 @@ export function addBook(payload: BookCreateRequest, actorUserId: string) {
   });
 }
 
-export function removeBook(bookId: string, actorUserId: string) {
-  return request<void>(`/api/catalog/books/${bookId}`, {
+export function removeBook(ssnNumber: string, actorUserId: string) {
+  return request<void>(`/api/catalog/books/${encodeURIComponent(ssnNumber)}`, {
     method: "DELETE",
     headers: { "X-Actor-User-Id": actorUserId }
   });
 }
 
-export function listBookCopies(bookId: string, actorUserId: string) {
-  return request<BookCopySummary[]>(`/api/catalog/books/${bookId}/copies`, {
+export function listBookCopies(ssnNumber: string, actorUserId: string) {
+  return request<BookCopySummary[]>(`/api/catalog/books/${encodeURIComponent(ssnNumber)}/copies`, {
     headers: { "X-Actor-User-Id": actorUserId }
   });
 }

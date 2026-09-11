@@ -4,6 +4,7 @@ import java.util.UUID;
 
 public record BookCopyScanResponse(
     UUID copyId,
+    String ssnNumber,
     String accessionNumber,
     String title,
     String author,
@@ -13,6 +14,7 @@ public record BookCopyScanResponse(
     static BookCopyScanResponse from(BookCopy copy) {
         return new BookCopyScanResponse(
             copy.getId(),
+            copy.getSsnNumber(),
             copy.getAccessionNumber(),
             copy.getBook().getTitle(),
             copy.getBook().getAuthor(),

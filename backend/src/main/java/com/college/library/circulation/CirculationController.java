@@ -43,9 +43,11 @@ public class CirculationController {
     @PostMapping("/return/{bookCopyId}")
     ResponseEntity<CirculationResponse> returnCopy(
         @RequestHeader(ACTOR_HEADER) UUID actorUserId,
-        @PathVariable UUID bookCopyId
+        @PathVariable UUID bookCopyId,
+        @RequestBody(required = false) ReturnBookRequest request
     ) {
-        return ResponseEntity.ok(circulationUseCase.returnCopy(bookCopyId, actorUserId));
+        boolean resetFine = request != null && Boolean.TRUE.equals(request.resetFine());
+        return ResponseEntity.ok(circulationUseCase.returnCopy(bookCopyId, resetFine, actorUserId));
     }
 
     @PostMapping("/renew/{transactionId}")
