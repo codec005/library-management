@@ -269,6 +269,54 @@ public class CirculationService implements CirculationUseCase {
             throw new IllegalStateException("Only issued books can be renewed");
         }
 
+        return completeRenew(transaction, renewalDays, actor);
+    }
+
+    @Override
+    @Transactional
+    public CirculationResponse renewByIdentifier(RenewByIdentifierRequest request, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+
+        if (!hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only librarian or admin can renew issued books");
+        }
+
+        if (request.borrowerIdentifierType() != IdentifierType.ROLL_NUMBER
+            && request.borrowerIdentifierType() != IdentifierType.QR_CREDENTIAL) {
+            throw new IllegalArgumentException("Renew requires student/faculty roll number/staff code or QR");
+        }
+
+        String borrowerIdentifier = cleanValue(request.borrowerIdentifier());
+        String bookScanValue = cleanValue(request.bookScanValue());
+        UserAccount borrower = userIdentifierRepository
+            .findByTypeAndValue(request.borrowerIdentifierType(), borrowerIdentifier)
+            .filter(identifier -> identifier.getUser().isActive())
+            .orElseThrow(() -> new IllegalArgumentException("Borrower not found for the entered identifier"))
+            .getUser();
+
+        if (!hasAnyRole(borrower, UserRole.STUDENT, UserRole.FACULTY)) {
+            throw new IllegalStateException("Only student or faculty loans can be renewed with this flow");
+        }
+
+        CirculationTransaction transaction = resolveIssuedTransaction(borrower, request.bookScanType(), bookScanValue);
+        BookCopy copy = bookCopyRepository.findByIdForUpdate(transaction.getBookCopy().getId())
+            .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
+        CirculationTransaction lockedTransaction = circulationTransactionRepository
+            .findByBookCopyAndStatus(copy, CirculationStatus.ISSUED)
+            .orElseThrow(() -> new IllegalStateException("Book copy is not currently issued"));
+
+        if (!lockedTransaction.getBorrower().getId().equals(borrower.getId())) {
+            throw new IllegalStateException("This book is not issued to the scanned borrower");
+        }
+
+        return completeRenew(lockedTransaction, request.renewalDays(), actor);
+    }
+
+    private CirculationResponse completeRenew(
+        CirculationTransaction transaction,
+        Integer renewalDays,
+        UserAccount actor
+    ) {
         int maxRenewalDays = transaction.getBookCopy().getBook().getLoanPeriodDays();
         int days = renewalDays == null ? Math.min(DEFAULT_RENEWAL_DAYS, maxRenewalDays) : renewalDays;
         if (days < 1 || days > maxRenewalDays) {

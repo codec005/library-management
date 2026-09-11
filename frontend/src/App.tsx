@@ -33,6 +33,7 @@ import {
   listUsers,
   login,
   renewTransaction,
+  renewBookByIdentifier,
   registerUser,
   removeBook,
   removeBookCopyByQrCode,
@@ -166,6 +167,11 @@ export default function App() {
   const [returnScanType, setReturnScanType] = useState<ScanType>("QR");
   const [returnScanValue, setReturnScanValue] = useState("");
   const [returnResetFine, setReturnResetFine] = useState(false);
+  const [renewBorrowerIdentifierType, setRenewBorrowerIdentifierType] = useState<IdentifierType>("ROLL_NUMBER");
+  const [renewBorrowerIdentifier, setRenewBorrowerIdentifier] = useState("");
+  const [renewScanType, setRenewScanType] = useState<ScanType>("QR");
+  const [renewScanValue, setRenewScanValue] = useState("");
+  const [renewLoanDays, setRenewLoanDays] = useState(7);
   const [scanResult, setScanResult] = useState<BookCopyScanResponse | null>(null);
   const [isScanResultOpen, setIsScanResultOpen] = useState(false);
   const [isBookHistoryOpen, setIsBookHistoryOpen] = useState(false);
@@ -273,6 +279,9 @@ export default function App() {
   const returnBorrowerValue = returnBorrowerIdentifier.trim();
   const returnBookValue = returnScanValue.trim();
   const isStaffReturnReady = canIssueToStudents && returnBorrowerValue.length > 0 && returnBookValue.length > 0;
+  const renewBorrowerValue = renewBorrowerIdentifier.trim();
+  const renewBookValue = renewScanValue.trim();
+  const isStaffRenewReady = canIssueToStudents && renewBorrowerValue.length > 0 && renewBookValue.length > 0;
   const myTotalFine = useMemo(
     () => myIssuedBooks.reduce((total, book) => total + book.fineAmount, 0),
     [myIssuedBooks]
@@ -481,6 +490,10 @@ export default function App() {
     setReturnBorrowerIdentifier("");
     setReturnScanValue("");
     setReturnResetFine(false);
+    setRenewBorrowerIdentifier("");
+    setRenewBorrowerIdentifierType("ROLL_NUMBER");
+    setRenewScanValue("");
+    setRenewLoanDays(7);
   }
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
@@ -827,6 +840,48 @@ export default function App() {
       setMessage(`${transaction.bookTitle} returned for ${transaction.borrowerName}. ${fineMessage}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Return failed.");
+    }
+  }
+
+  async function handleStaffRenewByScan() {
+    if (!currentUser) {
+      setMessage("Sign in as librarian or admin to renew books.");
+      return;
+    }
+
+    if (!isStaffRenewReady) {
+      setMessage("Enter/scan the borrower roll/QR and the book QR/SSN before renewing.");
+      return;
+    }
+
+    if (renewLoanDays < 1) {
+      setMessage("Renewal days must be at least 1.");
+      return;
+    }
+
+    const daysToRenew = renewLoanDays;
+
+    try {
+      const transaction = await renewBookByIdentifier(
+        currentUser.userId,
+        renewBorrowerIdentifierType,
+        renewBorrowerValue,
+        renewScanType,
+        renewBookValue,
+        daysToRenew
+      );
+      setRenewBorrowerIdentifier("");
+      setRenewBorrowerIdentifierType("ROLL_NUMBER");
+      setRenewScanValue("");
+      setRenewLoanDays(Math.min(7, transaction.loanPeriodDays));
+      if (selectedUserDetails?.id) {
+        setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
+      }
+      setMessage(
+        `${transaction.bookTitle} renewed for ${transaction.borrowerName} by ${daysToRenew} day(s) until ${transaction.dueOn}.`
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Renewal failed.");
     }
   }
 
@@ -1812,6 +1867,97 @@ export default function App() {
               </div>
               {!isStaffReturnReady && (
                 <p className="issue-hint">Enter or scan both the borrower and the book identifiers to return.</p>
+              )}
+            </div>
+          </article>
+        )}
+
+        {canIssueToStudents && (
+          <article className="panel issue-panel">
+            <div className="panel-title">
+              <QrCode size={22} />
+              <div>
+                <h2>Renew Book</h2>
+                <p>Scan borrower QR/roll number and book QR/SSN, then choose how many days to extend.</p>
+              </div>
+            </div>
+
+            <div className="simple-scan-flow">
+              <div className="issue-steps-grid">
+                <div className="staff-issue-panel">
+                  <h3><span className="step-badge">1</span> Borrower</h3>
+                  <p>Enter roll number/staff code or scan borrower QR.</p>
+                  <div className="staff-issue-grid">
+                    <input
+                      placeholder="Roll number or staff code"
+                      value={renewBorrowerIdentifierType === "ROLL_NUMBER" ? renewBorrowerIdentifier : ""}
+                      onChange={(event) => {
+                        setRenewBorrowerIdentifierType("ROLL_NUMBER");
+                        setRenewBorrowerIdentifier(event.target.value);
+                      }}
+                    />
+                  </div>
+                  <QrScanner
+                    label="Scan Borrower QR"
+                    onDetected={(value) => {
+                      setRenewBorrowerIdentifierType("QR_CREDENTIAL");
+                      setRenewBorrowerIdentifier(value);
+                    }}
+                  />
+                  {renewBorrowerIdentifierType === "QR_CREDENTIAL" && renewBorrowerIdentifier && (
+                    <p className="scan-captured-note">Borrower QR captured from scanner.</p>
+                  )}
+                </div>
+
+                <div className="staff-issue-panel">
+                  <h3><span className="step-badge">2</span> Book</h3>
+                  <p>Scan book QR or enter book QR/RFID/SSN.</p>
+                  <form
+                    className="scan-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void handleStaffRenewByScan();
+                    }}
+                  >
+                    <select value={renewScanType} onChange={(event) => setRenewScanType(event.target.value as ScanType)}>
+                      <option value="QR">Book QR</option>
+                      <option value="RFID">RFID Tag</option>
+                      <option value="SSN">SSN</option>
+                    </select>
+                    <input
+                      placeholder={renewScanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}
+                      value={renewScanValue}
+                      onChange={(event) => setRenewScanValue(event.target.value)}
+                    />
+                  </form>
+                  <QrScanner
+                    label="Scan Book QR"
+                    onDetected={(value) => {
+                      setRenewScanType("QR");
+                      setRenewScanValue(value);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <label className="loan-days-field">
+                Renew for (days)
+                <input
+                  type="number"
+                  min={1}
+                  value={renewLoanDays}
+                  onChange={(event) => setRenewLoanDays(Number(event.target.value))}
+                />
+                <span className="list-note">Cannot exceed the book&apos;s maximum loan period.</span>
+              </label>
+
+              <div className="action-row issue-action-row">
+                <button type="button" disabled={!isStaffRenewReady} onClick={() => void handleStaffRenewByScan()}>
+                  Renew Book
+                </button>
+              </div>
+              {!isStaffRenewReady && (
+                <p className="issue-hint">Enter or scan both the borrower and the book identifiers to renew.</p>
               )}
             </div>
           </article>

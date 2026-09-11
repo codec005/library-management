@@ -391,6 +391,27 @@ export function renewTransaction(transactionId: string, actorUserId: string, ren
   });
 }
 
+export function renewBookByIdentifier(
+  actorUserId: string,
+  borrowerIdentifierType: IdentifierType,
+  borrowerIdentifier: string,
+  bookScanType: ScanType,
+  bookScanValue: string,
+  renewalDays?: number
+) {
+  return request<CirculationResponse>("/api/circulation/renew/by-identifier", {
+    method: "POST",
+    headers: { "X-Actor-User-Id": actorUserId },
+    body: JSON.stringify({
+      borrowerIdentifierType,
+      borrowerIdentifier,
+      bookScanType,
+      bookScanValue,
+      renewalDays
+    })
+  });
+}
+
 export function listIssuedBooksForUser(borrowerId: string, actorUserId: string) {
   return request<CirculationResponse[]>(`/api/circulation/users/${borrowerId}/issued`, {
     headers: { "X-Actor-User-Id": actorUserId }

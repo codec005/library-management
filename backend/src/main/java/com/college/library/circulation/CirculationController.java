@@ -68,6 +68,14 @@ public class CirculationController {
         return ResponseEntity.ok(circulationUseCase.renew(transactionId, renewalDays, actorUserId));
     }
 
+    @PostMapping("/renew/by-identifier")
+    ResponseEntity<CirculationResponse> renewByIdentifier(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @Valid @RequestBody RenewByIdentifierRequest request
+    ) {
+        return ResponseEntity.ok(circulationUseCase.renewByIdentifier(request, actorUserId));
+    }
+
     @GetMapping("/users/{borrowerId}/issued")
     ResponseEntity<List<CirculationResponse>> listIssuedBooksForUser(
         @RequestHeader(ACTOR_HEADER) UUID actorUserId,
