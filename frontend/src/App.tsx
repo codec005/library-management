@@ -197,7 +197,7 @@ export default function App() {
   const activeRole = useMemo(() => currentUser?.roles[0] ?? "Guest", [currentUser]);
   const loginIdentifierLabel = useMemo(() => {
     const labels: Record<IdentifierType, string> = {
-      ROLL_NUMBER: "Roll Number / Staff Code",
+      ROLL_NUMBER: "Staff Code",
       COLLEGE_EMAIL: "College Email",
       PHONE_NUMBER: "Phone Number",
       QR_CREDENTIAL: "QR Credential",
