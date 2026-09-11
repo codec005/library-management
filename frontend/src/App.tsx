@@ -1608,7 +1608,7 @@ export default function App() {
                 SSN Number
                 <input
                   required
-                  placeholder="Example: 2512130300019"
+                  placeholder="Example: 9780132350884"
                   value={bookForm.ssnNumber}
                   onChange={(event) => setBookForm({ ...bookForm, ssnNumber: event.target.value })}
                 />
@@ -1764,7 +1764,7 @@ export default function App() {
               <p>Enter the book SSN number to delete the book and all its copies from the database.</p>
               <div className="staff-issue-grid remove-copy-grid">
                 <input
-                  placeholder="Example: 2512130300019"
+                  placeholder="Example: 9780132350884"
                   value={bookSsnToRemove}
                   onChange={(event) => setBookSsnToRemove(event.target.value)}
                 />
@@ -1779,7 +1779,7 @@ export default function App() {
               <p>Enter or scan the exact QR value for the physical copy to remove.</p>
               <div className="staff-issue-grid remove-copy-grid">
                 <input
-                  placeholder="Example: BOOK-QR-2512130300019"
+                  placeholder="Example: BOOK-QR-9780132350884"
                   value={bookCopyQrValue}
                   onChange={(event) => setBookCopyQrValue(event.target.value)}
                 />
