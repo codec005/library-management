@@ -423,6 +423,33 @@ label {
   max-width: 520px;
 }
 
+.scan-result-window {
+  max-width: 560px;
+}
+
+.book-history-window {
+  max-width: 720px;
+}
+
+.scan-checked-bar {
+  align-items: center;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.75rem 0.9rem;
+}
+
+.scan-checked-bar span {
+  color: var(--text);
+  font-size: 0.95rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .message-dialog-text {
   color: var(--text);
   font-size: 1.05rem;

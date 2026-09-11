@@ -167,6 +167,8 @@ export default function App() {
   const [returnScanValue, setReturnScanValue] = useState("");
   const [returnResetFine, setReturnResetFine] = useState(false);
   const [scanResult, setScanResult] = useState<BookCopyScanResponse | null>(null);
+  const [isScanResultOpen, setIsScanResultOpen] = useState(false);
+  const [isBookHistoryOpen, setIsBookHistoryOpen] = useState(false);
   const [myProfile, setMyProfile] = useState<UserDetailsResponse | null>(null);
   const [myIssuedBooks, setMyIssuedBooks] = useState<CirculationResponse[]>([]);
   const [selectedUserDetails, setSelectedUserDetails] = useState<UserDetailsResponse | null>(null);
@@ -467,6 +469,9 @@ export default function App() {
     setIsUserDirectoryOpen(false);
     setIsIssuedBooksWindowOpen(false);
     setIsBookQrWindowOpen(false);
+    setIsScanResultOpen(false);
+    setIsBookHistoryOpen(false);
+    setBookCopyHistory(null);
     setGeneratedBookQrs([]);
     setBookCopyQrValue("");
     setScanResult(null);
@@ -603,16 +608,21 @@ export default function App() {
     try {
       const result = await scanBookCopy(type, value, currentUser?.userId);
       setScanResult(result);
+      setIsScanResultOpen(true);
       setIssueLoanDays(result.loanPeriodDays);
       return result;
     } catch (error) {
       setScanResult(null);
+      setIsScanResultOpen(false);
       setMessage(error instanceof Error ? error.message : "No book copy found for this scan value.");
       return null;
     }
   }
 
-  async function handleLookupBookHistory(event?: React.FormEvent<HTMLFormElement>) {
+  async function handleLookupBookHistory(
+    event?: React.FormEvent<HTMLFormElement>,
+    override?: { type?: ScanType; value?: string }
+  ) {
     event?.preventDefault();
 
     if (!currentUser) {
@@ -620,20 +630,24 @@ export default function App() {
       return;
     }
 
-    const value = bookHistoryScanValue.trim();
+    const type = override?.type ?? bookHistoryScanType;
+    const value = (override?.value ?? bookHistoryScanValue).trim();
     if (!value) {
       setMessage("Enter or scan a book QR/RFID/SSN value to view history.");
       return;
     }
 
     try {
-      const scanned = await scanBookCopy(bookHistoryScanType, value, currentUser.userId);
+      const scanned = await scanBookCopy(type, value, currentUser.userId);
       const history = await getBookCopyHistory(scanned.copyId, currentUser.userId);
       setBookCopyHistory(history);
+      setIsBookHistoryOpen(true);
+      setBookHistoryScanType(type);
       setBookHistoryScanValue(value);
-      setMessage(`Loaded history for ${history.title}.`);
+      setMessage("");
     } catch (error) {
       setBookCopyHistory(null);
+      setIsBookHistoryOpen(false);
       setMessage(error instanceof Error ? error.message : "Unable to load book copy history.");
     }
   }
@@ -1650,6 +1664,7 @@ export default function App() {
                       onChange={(event) => {
                         setScanValue(event.target.value);
                         setScanResult(null);
+                        setIsScanResultOpen(false);
                       }}
                     />
                     <button type="submit" disabled={!staffIssueBookValue}>
@@ -1666,6 +1681,19 @@ export default function App() {
                   />
                 </div>
               </div>
+
+              {scanResult && (
+                <div className="scan-checked-bar">
+                  <span>
+                    Checked: <strong>{scanResult.title}</strong>
+                    {" · "}
+                    {scanResult.status}
+                  </span>
+                  <button type="button" className="secondary-button" onClick={() => setIsScanResultOpen(true)}>
+                    View details
+                  </button>
+                </div>
+              )}
 
               {scanResult && (
                 <label className="loan-days-field">
@@ -1695,28 +1723,6 @@ export default function App() {
               </div>
               {canIssueToStudents && !isStaffIssueReady && (
                 <p className="issue-hint">Enter the student roll number or faculty staff code and the book copy QR/RFID/SSN value to issue.</p>
-              )}
-
-              {scanResult && (
-                <div className="scan-result">
-                  <span className="badge">{scanResult.status}</span>
-                  <h3>{scanResult.title}</h3>
-                  <p>{scanResult.author}</p>
-                  <dl>
-                    <div>
-                      <dt>SSN</dt>
-                      <dd>{scanResult.ssnNumber}</dd>
-                    </div>
-                    <div>
-                      <dt>Accession</dt>
-                      <dd>{scanResult.accessionNumber}</dd>
-                    </div>
-                    <div>
-                      <dt>Shelf</dt>
-                      <dd>{scanResult.shelfLocation}</dd>
-                    </div>
-                  </dl>
-                </div>
               )}
             </div>
           )}
@@ -2144,6 +2150,7 @@ export default function App() {
                 onChange={(event) => {
                   setBookHistoryScanValue(event.target.value);
                   setBookCopyHistory(null);
+                  setIsBookHistoryOpen(false);
                 }}
               />
               <button type="submit">View History</button>
@@ -2153,67 +2160,156 @@ export default function App() {
               onDetected={(value) => {
                 setBookHistoryScanType("QR");
                 setBookHistoryScanValue(value);
+                void handleLookupBookHistory(undefined, { type: "QR", value });
               }}
             />
 
-            {bookCopyHistory && (
-              <div className="book-history-result">
-                <div className="scan-result">
-                  <span className="badge">{bookCopyHistory.status}</span>
-                  <h3>{bookCopyHistory.title}</h3>
-                  <p>{bookCopyHistory.author}</p>
-                  <dl>
-                    <div>
-                      <dt>SSN</dt>
-                      <dd>{bookCopyHistory.ssnNumber}</dd>
-                    </div>
-                    <div>
-                      <dt>Accession</dt>
-                      <dd>{bookCopyHistory.accessionNumber}</dd>
-                    </div>
-                    <div>
-                      <dt>Shelf</dt>
-                      <dd>{bookCopyHistory.shelfLocation}</dd>
-                    </div>
-                  </dl>
-                </div>
-
-                <div className="issued-list book-loan-history">
-                  <h3>Loan history</h3>
-                  {bookCopyHistory.loans.length === 0 ? (
-                    <p>No issue or return records for this copy yet.</p>
-                  ) : (
-                    bookCopyHistory.loans.map((loan) => (
-                      <div key={loan.transactionId} className="book-row">
-                        <div>
-                          <strong>
-                            {loan.borrowerName}
-                            {loan.borrowerCode ? ` (${loan.borrowerCode})` : ""}
-                          </strong>
-                          <p>
-                            Issued {formatDateTime(loan.issuedAt, loan.issuedOn)}
-                            {" · Due "}
-                            {loan.dueOn}
-                            {loan.returnedOn || loan.returnedAt
-                              ? ` · Returned ${formatDateTime(loan.returnedAt, loan.returnedOn)}`
-                              : " · Not returned"}
-                          </p>
-                          <p>
-                            Status {loan.status}
-                            {" · Fine Rs "}
-                            {loan.fineAmount}
-                            {loan.overdueDays > 0 ? ` (${loan.overdueDays} overdue day(s))` : ""}
-                          </p>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+            {bookCopyHistory && !isBookHistoryOpen && (
+              <div className="scan-checked-bar">
+                <span>
+                  History loaded: <strong>{bookCopyHistory.title}</strong>
+                </span>
+                <button type="button" className="secondary-button" onClick={() => setIsBookHistoryOpen(true)}>
+                  View details
+                </button>
               </div>
             )}
           </article>
         )}
       </section>
+      )}
+
+      {isScanResultOpen && scanResult && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Scanned book copy"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsScanResultOpen(false);
+            }
+          }}
+        >
+          <div className="modal-panel scan-result-window">
+            <div className="modal-header">
+              <div>
+                <h2>Scanned Book Copy</h2>
+                <p>Details for the QR/RFID/SSN you just checked.</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setIsScanResultOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="scan-result">
+              <span className="badge">{scanResult.status}</span>
+              <h3>{scanResult.title}</h3>
+              <p>{scanResult.author}</p>
+              <dl>
+                <div>
+                  <dt>SSN</dt>
+                  <dd>{scanResult.ssnNumber}</dd>
+                </div>
+                <div>
+                  <dt>Accession</dt>
+                  <dd>{scanResult.accessionNumber}</dd>
+                </div>
+                <div>
+                  <dt>Shelf</dt>
+                  <dd>{scanResult.shelfLocation}</dd>
+                </div>
+                <div>
+                  <dt>Max loan days</dt>
+                  <dd>{scanResult.loanPeriodDays}</dd>
+                </div>
+              </dl>
+            </div>
+            <div className="action-row">
+              <button type="button" onClick={() => setIsScanResultOpen(false)}>
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isBookHistoryOpen && bookCopyHistory && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Book copy history"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsBookHistoryOpen(false);
+            }
+          }}
+        >
+          <div className="modal-panel book-history-window">
+            <div className="modal-header">
+              <div>
+                <h2>Book Copy History</h2>
+                <p>Borrowers, issue/return dates, and fines for this copy.</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setIsBookHistoryOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="book-history-result">
+              <div className="scan-result">
+                <span className="badge">{bookCopyHistory.status}</span>
+                <h3>{bookCopyHistory.title}</h3>
+                <p>{bookCopyHistory.author}</p>
+                <dl>
+                  <div>
+                    <dt>SSN</dt>
+                    <dd>{bookCopyHistory.ssnNumber}</dd>
+                  </div>
+                  <div>
+                    <dt>Accession</dt>
+                    <dd>{bookCopyHistory.accessionNumber}</dd>
+                  </div>
+                  <div>
+                    <dt>Shelf</dt>
+                    <dd>{bookCopyHistory.shelfLocation}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div className="issued-list book-loan-history">
+                <h3>Loan history</h3>
+                {bookCopyHistory.loans.length === 0 ? (
+                  <p>No issue or return records for this copy yet.</p>
+                ) : (
+                  bookCopyHistory.loans.map((loan) => (
+                    <div key={loan.transactionId} className="book-row">
+                      <div>
+                        <strong>
+                          {loan.borrowerName}
+                          {loan.borrowerCode ? ` (${loan.borrowerCode})` : ""}
+                        </strong>
+                        <p>
+                          Issued {formatDateTime(loan.issuedAt, loan.issuedOn)}
+                          {" · Due "}
+                          {loan.dueOn}
+                          {loan.returnedOn || loan.returnedAt
+                            ? ` · Returned ${formatDateTime(loan.returnedAt, loan.returnedOn)}`
+                            : " · Not returned"}
+                        </p>
+                        <p>
+                          Status {loan.status}
+                          {" · Fine Rs "}
+                          {loan.fineAmount}
+                          {loan.overdueDays > 0 ? ` (${loan.overdueDays} overdue day(s))` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {isCatalogWindowOpen && (
