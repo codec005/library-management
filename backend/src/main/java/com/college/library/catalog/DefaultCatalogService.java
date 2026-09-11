@@ -47,6 +47,7 @@ public class DefaultCatalogService implements CatalogService {
         String author,
         String publisher,
         boolean availableOnly,
+        boolean groupByTitle,
         int page,
         int size
     ) {
@@ -70,10 +71,134 @@ public class DefaultCatalogService implements CatalogService {
             }
         }
 
+        if (groupByTitle) {
+            // Kept for API compatibility; Full Catalogue uses searchGroupedBooks.
+            return searchBooksGroupedByTitle(
+                cleanedQuery,
+                cleanedCategory,
+                cleanedAuthor,
+                cleanedPublisher,
+                availableOnly,
+                page,
+                size
+            );
+        }
+
         return PageResponse.from(
             bookRepository
                 .search(cleanedQuery, cleanedCategory, cleanedAuthor, cleanedPublisher, availableOnly, pageable)
                 .map(BookSummary::from)
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<GroupedBookSummary> searchGroupedBooks(
+        String query,
+        String category,
+        String author,
+        String publisher,
+        boolean availableOnly,
+        int page,
+        int size
+    ) {
+        String cleanedQuery = cleanValue(query);
+        String cleanedCategory = cleanValue(category);
+        String cleanedAuthor = cleanValue(author);
+        String cleanedPublisher = cleanValue(publisher);
+        var pageable = PageResponse.pageable(page, size);
+
+        var titlePage = bookRepository.searchTitleGroups(
+            cleanedQuery,
+            cleanedCategory,
+            cleanedAuthor,
+            cleanedPublisher,
+            availableOnly,
+            pageable
+        );
+
+        List<GroupedBookSummary> content = titlePage.getContent().stream()
+            .map(this::toGroupedBookSummary)
+            .toList();
+
+        return new PageResponse<>(
+            content,
+            titlePage.getNumber(),
+            titlePage.getSize(),
+            titlePage.getTotalElements(),
+            titlePage.getTotalPages()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BookSummary> listBooksByTitle(String title) {
+        String cleanedTitle = cleanValue(title);
+        if (cleanedTitle.isEmpty()) {
+            return List.of();
+        }
+        return bookRepository.findEditionsByTitle(cleanedTitle).stream()
+            .map(BookSummary::from)
+            .toList();
+    }
+
+    private GroupedBookSummary toGroupedBookSummary(Object[] row) {
+        return new GroupedBookSummary(
+            stringValue(row[0]),
+            stringValue(row[1]),
+            stringValue(row[2]),
+            stringValue(row[3]),
+            longValue(row[4]),
+            longValue(row[5]),
+            longValue(row[6])
+        );
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private static long longValue(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.parseLong(String.valueOf(value));
+    }
+
+    private PageResponse<BookSummary> searchBooksGroupedByTitle(
+        String query,
+        String category,
+        String author,
+        String publisher,
+        boolean availableOnly,
+        int page,
+        int size
+    ) {
+        PageResponse<GroupedBookSummary> grouped = searchGroupedBooks(
+            query,
+            category,
+            author,
+            publisher,
+            availableOnly,
+            page,
+            size
+        );
+        if (grouped.content().isEmpty()) {
+            return new PageResponse<>(List.of(), grouped.page(), grouped.size(), 0, 0);
+        }
+        // Compatibility only: load editions for the titles on this page.
+        List<BookSummary> editions = grouped.content().stream()
+            .flatMap(item -> listBooksByTitle(item.title()).stream())
+            .toList();
+        return new PageResponse<>(
+            editions,
+            grouped.page(),
+            grouped.size(),
+            grouped.totalElements(),
+            grouped.totalPages()
         );
     }
 

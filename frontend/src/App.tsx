@@ -10,6 +10,7 @@ import {
   BookCreateRequest,
   BookUpdateRequest,
   BookSummary,
+  GroupedBookSummary,
   CirculationResponse,
   IdentifierType,
   LoginResponse,
@@ -45,6 +46,8 @@ import {
   scanBookCopy,
   scanLogin,
   searchBooks,
+  searchGroupedBooks,
+  listBooksByTitle,
   updateUser
 } from "./api";
 
@@ -56,11 +59,12 @@ type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
 
 type GroupedCatalogBook = {
   title: string;
-  authors: string[];
-  publishers: string[];
-  categories: string[];
+  author: string;
+  publisher: string;
+  category: string;
   availableCopies: number;
   totalCopies: number;
+  editionCount: number;
   editions: BookSummary[];
 };
 
@@ -77,11 +81,12 @@ function groupBooksByTitle(books: BookSummary[], onlyAvailable = false): Grouped
     if (!existing) {
       grouped.set(key, {
         title: book.title.trim(),
-        authors: book.author ? [book.author] : [],
-        publishers: book.publisher ? [book.publisher] : [],
-        categories: book.category ? [book.category] : [],
+        author: book.author || "",
+        publisher: book.publisher ?? "",
+        category: book.category || "",
         availableCopies: book.availableCopies,
         totalCopies: book.totalCopies,
+        editionCount: 1,
         editions: [book]
       });
       continue;
@@ -89,22 +94,8 @@ function groupBooksByTitle(books: BookSummary[], onlyAvailable = false): Grouped
 
     existing.availableCopies += book.availableCopies;
     existing.totalCopies += book.totalCopies;
+    existing.editionCount += 1;
     existing.editions.push(book);
-    if (book.author && !existing.authors.some((author) => author.toLowerCase() === book.author.toLowerCase())) {
-      existing.authors.push(book.author);
-    }
-    if (
-      book.publisher &&
-      !existing.publishers.some((publisher) => publisher.toLowerCase() === book.publisher!.toLowerCase())
-    ) {
-      existing.publishers.push(book.publisher);
-    }
-    if (
-      book.category &&
-      !existing.categories.some((category) => category.toLowerCase() === book.category.toLowerCase())
-    ) {
-      existing.categories.push(book.category);
-    }
   }
 
   return Array.from(grouped.values()).sort((left, right) => left.title.localeCompare(right.title));
@@ -208,12 +199,14 @@ export default function App() {
   const [catalogAuthor, setCatalogAuthor] = useState("");
   const [catalogPublisher, setCatalogPublisher] = useState("");
   const [catalogAvailableOnly, setCatalogAvailableOnly] = useState(false);
-  const [catalogBooks, setCatalogBooks] = useState<BookSummary[]>([]);
+  const [catalogBooks, setCatalogBooks] = useState<GroupedBookSummary[]>([]);
   const [catalogPage, setCatalogPage] = useState(0);
   const [catalogPageSize, setCatalogPageSize] = useState<PageSize>(10);
   const [catalogTotalPages, setCatalogTotalPages] = useState(0);
   const [catalogTotalElements, setCatalogTotalElements] = useState(0);
+  const [catalogLoading, setCatalogLoading] = useState(false);
   const [selectedTitleGroup, setSelectedTitleGroup] = useState<GroupedCatalogBook | null>(null);
+  const [titleDetailsLoading, setTitleDetailsLoading] = useState(false);
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [userDirectoryPage, setUserDirectoryPage] = useState(0);
   const [userDirectoryPageSize, setUserDirectoryPageSize] = useState<PageSize>(10);
@@ -362,7 +355,6 @@ export default function App() {
     () => availableCatalogBooks.slice(0, AVAILABLE_BOOKS_PREVIEW_SIZE),
     [availableCatalogBooks]
   );
-  const groupedCatalogBooks = useMemo(() => groupBooksByTitle(catalogBooks), [catalogBooks]);
   const selectedUserTotalFine = useMemo(
     () => selectedUserIssuedBooks.reduce((total, book) => total + book.fineAmount, 0),
     [selectedUserIssuedBooks]
@@ -405,19 +397,56 @@ export default function App() {
     size: PageSize = catalogPageSize,
     filters?: { category?: string; author?: string; publisher?: string; availableOnly?: boolean }
   ) {
-    const result = await searchBooks(searchQuery, {
-      availableOnly: filters?.availableOnly ?? catalogAvailableOnly,
-      category: filters?.category ?? catalogCategory,
-      author: filters?.author ?? catalogAuthor,
-      publisher: filters?.publisher ?? catalogPublisher,
-      page,
-      size
+    setCatalogLoading(true);
+    try {
+      const result = await searchGroupedBooks(searchQuery, {
+        availableOnly: filters?.availableOnly ?? catalogAvailableOnly,
+        category: filters?.category ?? catalogCategory,
+        author: filters?.author ?? catalogAuthor,
+        publisher: filters?.publisher ?? catalogPublisher,
+        page,
+        size
+      });
+      setCatalogBooks(result.content);
+      setCatalogPage(result.page);
+      setCatalogPageSize(result.size === 20 || result.size === 50 ? result.size : 10);
+      setCatalogTotalPages(result.totalPages);
+      setCatalogTotalElements(result.totalElements);
+    } finally {
+      setCatalogLoading(false);
+    }
+  }
+
+  async function handleOpenTitleDetails(book: GroupedBookSummary) {
+    setTitleDetailsLoading(true);
+    setSelectedTitleGroup({
+      title: book.title,
+      author: book.author || "",
+      publisher: book.publisher ?? "",
+      category: book.category || "",
+      availableCopies: book.availableCopies,
+      totalCopies: book.totalCopies,
+      editionCount: book.editionCount,
+      editions: []
     });
-    setCatalogBooks(result.content);
-    setCatalogPage(result.page);
-    setCatalogPageSize(result.size === 20 || result.size === 50 ? result.size : 10);
-    setCatalogTotalPages(result.totalPages);
-    setCatalogTotalElements(result.totalElements);
+    try {
+      const editions = await listBooksByTitle(book.title);
+      setSelectedTitleGroup({
+        title: book.title,
+        author: book.author || editions[0]?.author || "",
+        publisher: book.publisher ?? editions[0]?.publisher ?? "",
+        category: book.category || editions[0]?.category || "",
+        availableCopies: book.availableCopies,
+        totalCopies: book.totalCopies,
+        editionCount: book.editionCount,
+        editions
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load title details.");
+      setSelectedTitleGroup(null);
+    } finally {
+      setTitleDetailsLoading(false);
+    }
   }
 
   async function refreshUserDirectory(
@@ -595,21 +624,21 @@ export default function App() {
   }
 
   async function handleOpenCatalogWindow() {
+    const nextFilters = {
+      category: availableCategory,
+      author: availableAuthor,
+      publisher: availablePublisher,
+      availableOnly: true
+    };
+    setCatalogQuery(query);
+    setCatalogCategory(availableCategory);
+    setCatalogAuthor(availableAuthor);
+    setCatalogPublisher(availablePublisher);
+    setCatalogAvailableOnly(true);
+    setCatalogPage(0);
+    setIsCatalogWindowOpen(true);
     try {
-      const nextFilters = {
-        category: availableCategory,
-        author: availableAuthor,
-        publisher: availablePublisher,
-        availableOnly: true
-      };
-      setCatalogQuery(query);
-      setCatalogCategory(availableCategory);
-      setCatalogAuthor(availableAuthor);
-      setCatalogPublisher(availablePublisher);
-      setCatalogAvailableOnly(true);
-      setCatalogPage(0);
       await refreshCatalogBooks(query, 0, catalogPageSize, nextFilters);
-      setIsCatalogWindowOpen(true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to open catalog.");
     }
@@ -1818,7 +1847,7 @@ export default function App() {
                   <div>
                     <strong>{book.title}</strong>
                     <span>
-                      {[book.authors.join(" / "), book.categories.join(" / ")].filter(Boolean).join(" · ")}
+                      {[book.author, book.category].filter(Boolean).join(" · ")}
                     </span>
                   </div>
                   <div className="book-actions">
@@ -2761,7 +2790,7 @@ export default function App() {
             <div className="modal-header">
               <div>
                 <h2>Full Catalogue</h2>
-                <p>Same titles are grouped. Click a row for SSN, author, publisher, and other details.</p>
+                <p>Same titles are grouped and paginated. Click a row for SSN, author, publisher, and other details.</p>
               </div>
               <button
                 type="button"
@@ -2855,21 +2884,23 @@ export default function App() {
             </form>
 
             <div className="book-list">
-              {groupedCatalogBooks.length === 0 ? (
+              {catalogLoading ? (
+                <div className="empty-state">Loading catalogue titles…</div>
+              ) : catalogBooks.length === 0 ? (
                 <div className="empty-state">No books found.</div>
               ) : (
-                groupedCatalogBooks.map((book) => (
+                catalogBooks.map((book) => (
                   <button
                     type="button"
                     className="book-row book-row-button"
                     key={book.title.toLowerCase()}
-                    onClick={() => setSelectedTitleGroup(book)}
+                    onClick={() => void handleOpenTitleDetails(book)}
                   >
                     <div>
                       <strong>{book.title}</strong>
                       <span>
-                        {[book.authors.join(" / "), book.categories.join(" / ")].filter(Boolean).join(" · ")}
-                        {book.editions.length > 1 ? ` · ${book.editions.length} catalog entries` : ""}
+                        {[book.author, book.category].filter(Boolean).join(" · ")}
+                        {book.editionCount > 1 ? ` · ${book.editionCount} catalog entries` : ""}
                       </span>
                     </div>
                     <div className="book-actions">
@@ -2884,7 +2915,7 @@ export default function App() {
               totalPages={catalogTotalPages}
               totalElements={catalogTotalElements}
               pageSize={catalogPageSize}
-              label="books"
+              label="titles"
               onPageChange={(nextPage) => {
                 void refreshCatalogBooks(catalogQuery, nextPage, catalogPageSize).catch((error) =>
                   setMessage(error instanceof Error ? error.message : "Catalog page failed.")
@@ -2919,8 +2950,8 @@ export default function App() {
               <div>
                 <h2>{selectedTitleGroup.title}</h2>
                 <p>
-                  {selectedTitleGroup.editions.length} catalog entr
-                  {selectedTitleGroup.editions.length === 1 ? "y" : "ies"} ·{" "}
+                  {selectedTitleGroup.editionCount} catalog entr
+                  {selectedTitleGroup.editionCount === 1 ? "y" : "ies"} ·{" "}
                   {selectedTitleGroup.availableCopies}/{selectedTitleGroup.totalCopies} copies available
                 </p>
               </div>
@@ -2931,18 +2962,21 @@ export default function App() {
 
             <div className="title-detail-summary">
               <p>
-                <strong>Authors:</strong> {selectedTitleGroup.authors.join(" / ") || "—"}
+                <strong>Author:</strong> {selectedTitleGroup.author || "—"}
               </p>
               <p>
-                <strong>Publishers:</strong> {selectedTitleGroup.publishers.join(" / ") || "—"}
+                <strong>Publisher:</strong> {selectedTitleGroup.publisher || "—"}
               </p>
               <p>
-                <strong>Categories:</strong> {selectedTitleGroup.categories.join(" / ") || "—"}
+                <strong>Category:</strong> {selectedTitleGroup.category || "—"}
               </p>
             </div>
 
             <div className="book-list title-edition-list">
-              {selectedTitleGroup.editions.map((edition) => (
+              {titleDetailsLoading && selectedTitleGroup.editions.length === 0 ? (
+                <div className="empty-state">Loading catalog entries…</div>
+              ) : (
+                selectedTitleGroup.editions.map((edition) => (
                 <div className="book-row title-edition-row" key={edition.ssnNumber}>
                   <div>
                     <strong>SSN {edition.ssnNumber}</strong>
@@ -2981,7 +3015,8 @@ export default function App() {
                     </dl>
                   </div>
                 </div>
-              ))}
+              ))
+              )}
             </div>
           </div>
         </div>

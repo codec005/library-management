@@ -13,11 +13,24 @@ public interface CatalogService {
         String author,
         String publisher,
         boolean availableOnly,
+        boolean groupByTitle,
         int page,
         int size
     );
 
     List<String> listCategories();
+
+    PageResponse<GroupedBookSummary> searchGroupedBooks(
+        String query,
+        String category,
+        String author,
+        String publisher,
+        boolean availableOnly,
+        int page,
+        int size
+    );
+
+    List<BookSummary> listBooksByTitle(String title);
 
     Optional<BookCopyScanResponse> scanCopy(ScanType type, String value, UUID actorUserId);
 

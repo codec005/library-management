@@ -40,8 +40,37 @@ public class CatalogController {
         @RequestParam(defaultValue = "10") int size
     ) {
         return ResponseEntity.ok(
-            catalogService.searchBooks(query, category, author, publisher, availableOnly, page, size)
+            catalogService.searchBooks(
+                query,
+                category,
+                author,
+                publisher,
+                availableOnly,
+                false,
+                page,
+                size
+            )
         );
+    }
+
+    @GetMapping("/books/grouped")
+    ResponseEntity<PageResponse<GroupedBookSummary>> searchGroupedBooks(
+        @RequestParam(defaultValue = "") String query,
+        @RequestParam(defaultValue = "") String category,
+        @RequestParam(defaultValue = "") String author,
+        @RequestParam(defaultValue = "") String publisher,
+        @RequestParam(defaultValue = "false") boolean availableOnly,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size
+    ) {
+        return ResponseEntity.ok(
+            catalogService.searchGroupedBooks(query, category, author, publisher, availableOnly, page, size)
+        );
+    }
+
+    @GetMapping("/books/by-title")
+    ResponseEntity<List<BookSummary>> listBooksByTitle(@RequestParam String title) {
+        return ResponseEntity.ok(catalogService.listBooksByTitle(title));
     }
 
     @GetMapping("/categories")

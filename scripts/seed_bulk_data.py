@@ -6,6 +6,7 @@ Creates:
   - N catalog book rows, each with a UNIQUE SSN (BOOK-00000001, BOOK-00000002, …)
   - Exactly one physical copy per catalog row, using the SAME SSN (so issue/scan by that SSN works)
   - Shared display titles so several unique SSNs can share one name (for UI title-grouping tests)
+  - At most 4 distinct authors, publishers, and categories per shared title
   - M users across STUDENT / FACULTY / LIBRARIAN / ADMIN
   - password hash for plaintext "user" on every account (BCrypt, Spring-compatible)
 
@@ -179,6 +180,21 @@ def shared_title(index: int, editions_per_title: int) -> str:
     )
 
 
+def metadata_for_title_edition(title: str, edition_ordinal: int) -> tuple[str, str, str]:
+    """
+    Pick author/publisher/category for the Nth edition of a title.
+
+    Caps each title at 4 distinct authors, 4 publishers, and 4 categories
+    even when the same title reappears after the adjective/noun pool wraps.
+    """
+    variant = edition_ordinal % 4
+    base = sum(ord(ch) for ch in title.strip().lower())
+    author = AUTHORS[(base + variant) % len(AUTHORS)]
+    publisher = PUBLISHERS[(base + variant * 3) % len(PUBLISHERS)]
+    category = CATEGORIES[(base + variant * 5) % len(CATEGORIES)]
+    return author, publisher, category
+
+
 def seed_books(
     conn: Connection,
     book_count: int,
@@ -194,12 +210,16 @@ def seed_books(
     book_rows: list[tuple] = []
     copy_rows: list[tuple] = []
     title_counts: dict[str, int] = {}
+    title_authors: dict[str, set[str]] = {}
+    title_publishers: dict[str, set[str]] = {}
+    title_categories: dict[str, set[str]] = {}
     used_ssns: set[str] = set()
 
     cur = conn.cursor()
     print(
         f"Seeding {book_count:,} books "
-        f"(1 unique SSN + 1 matching copy each, ~{editions_per_title} SSNs per shared title)..."
+        f"(1 unique SSN + 1 matching copy each, ~{editions_per_title} SSNs per shared title, "
+        f"≤4 authors/publishers/categories per title)..."
     )
 
     for i in range(1, book_count + 1):
@@ -209,12 +229,15 @@ def seed_books(
         used_ssns.add(ssn)
 
         title = shared_title(i, editions_per_title)
-        author = AUTHORS[(i - 1) % len(AUTHORS)]
-        publisher = PUBLISHERS[(i - 1) % len(PUBLISHERS)]
-        category = CATEGORIES[(i - 1) % len(CATEGORIES)]
+        edition_ordinal = title_counts.get(title, 0)
+        author, publisher, category = metadata_for_title_edition(title, edition_ordinal)
         fine_per_day = 5 + ((i - 1) % 10)
         loan_period_days = 7 if i % 3 else 14
-        title_counts[title] = title_counts.get(title, 0) + 1
+
+        title_counts[title] = edition_ordinal + 1
+        title_authors.setdefault(title, set()).add(author)
+        title_publishers.setdefault(title, set()).add(publisher)
+        title_categories.setdefault(title, set()).add(category)
 
         book_rows.append(
             (ssn, title, author, publisher, category, fine_per_day, loan_period_days)
@@ -252,12 +275,24 @@ def seed_books(
         ((title, count) for title, count in title_counts.items() if count > 1),
         key=lambda item: (-item[1], item[0]),
     )
+    max_authors = max((len(v) for v in title_authors.values()), default=0)
+    max_publishers = max((len(v) for v in title_publishers.values()), default=0)
+    max_categories = max((len(v) for v in title_categories.values()), default=0)
     print(f"Books done: {book_count:,} unique SSNs, {total_copies:,} copies (1:1)")
     print(f"  distinct titles = {len(title_counts):,}")
+    print(
+        f"  max distinct per title → authors={max_authors}, "
+        f"publishers={max_publishers}, categories={max_categories}"
+    )
     if multi:
         print("  sample shared titles (for grouping tests):")
         for title, count in multi[:8]:
-            print(f"    {count} unique SSNs → {title}")
+            print(
+                f"    {count} unique SSNs → {title} "
+                f"(authors={len(title_authors[title])}, "
+                f"publishers={len(title_publishers[title])}, "
+                f"categories={len(title_categories[title])})"
+            )
     return total_copies
 
 
