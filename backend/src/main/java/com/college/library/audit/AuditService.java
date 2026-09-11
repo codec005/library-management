@@ -34,7 +34,8 @@ public class AuditService implements AuditLogger, AuditUseCase {
 
     @Override
     public void record(AuditAction action, UUID actorUserId, String targetType, UUID targetId, String details) {
-        auditEventRepository.save(new AuditEvent(action, actorUserId, targetType, targetId, details));
+        String actorLabel = snapshotActorLabel(actorUserId);
+        auditEventRepository.save(new AuditEvent(action, actorUserId, actorLabel, targetType, targetId, details));
     }
 
     @Override
@@ -63,7 +64,8 @@ public class AuditService implements AuditLogger, AuditUseCase {
     }
 
     private AuditEventResponse toResponse(AuditEvent event) {
-        String doneBy = resolveUserLabel(event.getActorUserId());
+        String details = event.getDetails() == null || event.getDetails().isBlank() ? null : event.getDetails();
+        String doneBy = historicalActorLabel(event, details);
         String targetUser = "UserAccount".equals(event.getTargetType())
             ? resolveUserLabel(event.getTargetId())
             : null;
@@ -78,6 +80,26 @@ public class AuditService implements AuditLogger, AuditUseCase {
             doneBy,
             event.getCreatedAt()
         );
+    }
+
+    private String historicalActorLabel(AuditEvent event, String details) {
+        if (event.getActorLabel() != null && !event.getActorLabel().isBlank()) {
+            return event.getActorLabel();
+        }
+
+        // Older login events stored the actor name in details before actorLabel existed.
+        if (event.getAction() == AuditAction.PASSWORD_LOGIN || event.getAction() == AuditAction.SCAN_LOGIN) {
+            String historicalActor = labelFromAuditDetails(details);
+            if (historicalActor != null) {
+                return historicalActor;
+            }
+        }
+
+        return resolveUserLabel(event.getActorUserId());
+    }
+
+    private String snapshotActorLabel(UUID actorUserId) {
+        return resolveUserLabel(actorUserId);
     }
 
     private String buildSummary(AuditEvent event, String doneBy, String targetUser) {
@@ -148,12 +170,21 @@ public class AuditService implements AuditLogger, AuditUseCase {
     }
 
     private String rememberedUserLabel(String details, String targetUser) {
+        String fromDetails = labelFromAuditDetails(details);
+        if (fromDetails != null) {
+            return fromDetails;
+        }
+
         if (targetUser != null && !targetUser.equals("Unknown user") && !targetUser.equals("System")) {
             return targetUser;
         }
 
+        return "a user account";
+    }
+
+    private String labelFromAuditDetails(String details) {
         if (details == null || details.isBlank()) {
-            return "a user account";
+            return null;
         }
 
         String[] parts = details.split("·");
@@ -163,15 +194,19 @@ public class AuditService implements AuditLogger, AuditUseCase {
 
             // Older format: "STUDENT · Full Name"
             if (first.matches("^[A-Z_]+$")) {
-                return second;
+                return second.isBlank() ? null : second;
             }
 
-            // Newer format: "Full Name (ROLL) · ROLE"
-            return first;
+            // Newer format: "Full Name (ROLL) · ROLE" or "Full Name · ROLL_NUMBER"
+            return first.isBlank() ? null : first;
         }
 
         if (details.toLowerCase().contains("guest")) {
             return "a guest student";
+        }
+
+        if (details.equalsIgnoreCase("user deleted") || details.equalsIgnoreCase("QR credential requested")) {
+            return null;
         }
 
         return details;

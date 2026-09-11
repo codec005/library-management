@@ -18,6 +18,9 @@ public class AuditEvent extends BaseEntity {
 
     private UUID actorUserId;
 
+    @Column(length = 255)
+    private String actorLabel;
+
     private String targetType;
 
     private UUID targetId;
@@ -28,9 +31,17 @@ public class AuditEvent extends BaseEntity {
     protected AuditEvent() {
     }
 
-    public AuditEvent(AuditAction action, UUID actorUserId, String targetType, UUID targetId, String details) {
+    public AuditEvent(
+        AuditAction action,
+        UUID actorUserId,
+        String actorLabel,
+        String targetType,
+        UUID targetId,
+        String details
+    ) {
         this.action = action;
         this.actorUserId = actorUserId;
+        this.actorLabel = actorLabel;
         this.targetType = targetType;
         this.targetId = targetId;
         this.details = details;
@@ -42,6 +53,10 @@ public class AuditEvent extends BaseEntity {
 
     public UUID getActorUserId() {
         return actorUserId;
+    }
+
+    public String getActorLabel() {
+        return actorLabel;
     }
 
     public String getTargetType() {
