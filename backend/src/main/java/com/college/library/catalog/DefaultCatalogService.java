@@ -110,6 +110,40 @@ public class DefaultCatalogService implements CatalogService {
 
     @Override
     @Transactional
+    public BookSummary updateBook(String ssnNumber, BookUpdateRequest request, UUID actorUserId) {
+        UserAccount actor = findCatalogManager(actorUserId);
+        Book book = bookRepository.findById(cleanValue(ssnNumber))
+            .orElseThrow(() -> new IllegalArgumentException("Book not found"));
+
+        book.updateDetails(
+            request.title().trim(),
+            request.author().trim(),
+            request.publisher() == null || request.publisher().isBlank() ? null : request.publisher().trim(),
+            request.category().trim(),
+            request.finePerDay(),
+            request.loanPeriodDays()
+        );
+
+        Book savedBook = bookRepository.save(book);
+        auditLogger.record(
+            AuditAction.BOOK_UPDATE,
+            actor.getId(),
+            "Book",
+            null,
+            savedBook.getSsnNumber()
+                + ": "
+                + savedBook.getTitle()
+                + " · fine Rs "
+                + savedBook.getFinePerDay()
+                + "/day · loan "
+                + savedBook.getLoanPeriodDays()
+                + " days"
+        );
+        return BookSummary.from(savedBook);
+    }
+
+    @Override
+    @Transactional
     public void removeBook(String ssnNumber, UUID actorUserId) {
         UserAccount actor = findCatalogManager(actorUserId);
         Book book = bookRepository.findById(cleanValue(ssnNumber))

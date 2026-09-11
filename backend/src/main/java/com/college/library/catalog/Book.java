@@ -90,6 +90,22 @@ public class Book {
         return copies;
     }
 
+    public void updateDetails(
+        String title,
+        String author,
+        String publisher,
+        String category,
+        long finePerDay,
+        int loanPeriodDays
+    ) {
+        this.title = title;
+        this.author = author;
+        this.publisher = publisher;
+        this.category = category;
+        this.finePerDay = finePerDay;
+        this.loanPeriodDays = loanPeriodDays;
+    }
+
     public void addCopy(BookCopy copy) {
         copies.add(copy);
         copy.assignTo(this);

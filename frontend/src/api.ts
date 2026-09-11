@@ -65,10 +65,20 @@ export interface BookCreateRequest {
   copyCount: number;
 }
 
+export interface BookUpdateRequest {
+  title: string;
+  author: string;
+  publisher?: string;
+  category: string;
+  finePerDay: number;
+  loanPeriodDays: number;
+}
+
 export interface BookSummary {
   ssnNumber: string;
   title: string;
   author: string;
+  publisher?: string | null;
   category: string;
   finePerDay: number;
   loanPeriodDays: number;
@@ -84,6 +94,7 @@ export interface BookCopyScanResponse {
   author: string;
   shelfLocation: string;
   status: BookCopyStatus;
+  loanPeriodDays: number;
 }
 
 export interface BookCopySummary {
@@ -262,11 +273,16 @@ export function scanBookCopy(type: ScanType, value: string, actorUserId?: string
   });
 }
 
-export function issueBookCopy(bookCopyId: string, borrowerId: string, actorUserId: string) {
+export function issueBookCopy(
+  bookCopyId: string,
+  borrowerId: string,
+  actorUserId: string,
+  loanDays?: number
+) {
   return request<CirculationResponse>("/api/circulation/issue", {
     method: "POST",
     headers: { "X-Actor-User-Id": actorUserId },
-    body: JSON.stringify({ bookCopyId, borrowerId })
+    body: JSON.stringify({ bookCopyId, borrowerId, loanDays })
   });
 }
 
@@ -275,12 +291,19 @@ export function issueBookByIdentifier(
   borrowerIdentifierType: IdentifierType,
   borrowerIdentifier: string,
   bookScanType: ScanType,
-  bookScanValue: string
+  bookScanValue: string,
+  loanDays?: number
 ) {
   return request<CirculationResponse>("/api/circulation/issue/by-identifier", {
     method: "POST",
     headers: { "X-Actor-User-Id": actorUserId },
-    body: JSON.stringify({ borrowerIdentifierType, borrowerIdentifier, bookScanType, bookScanValue })
+    body: JSON.stringify({
+      borrowerIdentifierType,
+      borrowerIdentifier,
+      bookScanType,
+      bookScanValue,
+      loanDays
+    })
   });
 }
 
@@ -292,10 +315,11 @@ export function returnBookCopy(bookCopyId: string, actorUserId: string, resetFin
   });
 }
 
-export function renewTransaction(transactionId: string, actorUserId: string) {
+export function renewTransaction(transactionId: string, actorUserId: string, renewalDays?: number) {
   return request<CirculationResponse>(`/api/circulation/renew/${transactionId}`, {
     method: "POST",
-    headers: { "X-Actor-User-Id": actorUserId }
+    headers: { "X-Actor-User-Id": actorUserId },
+    body: JSON.stringify({ renewalDays })
   });
 }
 
@@ -314,6 +338,14 @@ export function getBookCopyHistory(bookCopyId: string, actorUserId: string) {
 export function addBook(payload: BookCreateRequest, actorUserId: string) {
   return request<BookSummary>("/api/catalog/books", {
     method: "POST",
+    headers: { "X-Actor-User-Id": actorUserId },
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateBook(ssnNumber: string, payload: BookUpdateRequest, actorUserId: string) {
+  return request<BookSummary>(`/api/catalog/books/${encodeURIComponent(ssnNumber)}`, {
+    method: "PUT",
     headers: { "X-Actor-User-Id": actorUserId },
     body: JSON.stringify(payload)
   });

@@ -8,6 +8,7 @@ import {
   BookCopyScanResponse,
   BookCopySummary,
   BookCreateRequest,
+  BookUpdateRequest,
   BookSummary,
   CirculationResponse,
   IdentifierType,
@@ -18,6 +19,7 @@ import {
   UserSummary,
   UserUpdateRequest,
   addBook,
+  updateBook,
   getBookCopyHistory,
   getStudentDetailsByIdentifier,
   getUserQrCredential,
@@ -53,6 +55,7 @@ const AUDIT_ACTION_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "USER_UPDATE", label: "User updated" },
   { value: "USER_QR_GENERATE", label: "User QR generated" },
   { value: "BOOK_ADD", label: "Book added" },
+  { value: "BOOK_UPDATE", label: "Book updated" },
   { value: "BOOK_REMOVE", label: "Book removed" },
   { value: "BOOK_SCAN", label: "Book scan" },
   { value: "BOOK_ISSUE", label: "Book issued" },
@@ -132,8 +135,19 @@ export default function App() {
     loanPeriodDays: 14,
     copyCount: 1
   });
+  const [bookEditForm, setBookEditForm] = useState<BookUpdateRequest & { ssnNumber: string }>({
+    ssnNumber: "",
+    title: "",
+    author: "",
+    publisher: "",
+    category: "",
+    finePerDay: 5,
+    loanPeriodDays: 14
+  });
+  const [issueLoanDays, setIssueLoanDays] = useState(14);
   const [message, setMessage] = useState("");
   const [resetFineOnReturn, setResetFineOnReturn] = useState<Record<string, boolean>>({});
+  const [renewDaysByTransaction, setRenewDaysByTransaction] = useState<Record<string, number>>({});
   const [bookHistoryScanType, setBookHistoryScanType] = useState<ScanType>("SSN");
   const [bookHistoryScanValue, setBookHistoryScanValue] = useState("");
   const [bookCopyHistory, setBookCopyHistory] = useState<BookCopyHistoryResponse | null>(null);
@@ -438,6 +452,7 @@ export default function App() {
     try {
       const result = await scanBookCopy(type, value, currentUser?.userId);
       setScanResult(result);
+      setIssueLoanDays(result.loanPeriodDays);
       return result;
     } catch (error) {
       setScanResult(null);
@@ -492,14 +507,25 @@ export default function App() {
       return;
     }
 
+    const maxDays = selectedCopy.loanPeriodDays;
+    if (issueLoanDays < 1 || issueLoanDays > maxDays) {
+      setMessage(`Borrow days must be between 1 and ${maxDays}.`);
+      return;
+    }
+
     try {
-      const transaction = await issueBookCopy(selectedCopy.copyId, currentUser.userId, currentUser.userId);
+      const transaction = await issueBookCopy(
+        selectedCopy.copyId,
+        currentUser.userId,
+        currentUser.userId,
+        issueLoanDays
+      );
       await loadCurrentUserViews(currentUser);
       setBooks(await searchBooks(query));
-      setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName}.`);
+      setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName} for ${issueLoanDays} day(s).`);
       setScanResult({ ...selectedCopy, status: "ISSUED" });
-    } catch {
-      setMessage("Issue failed. The copy may already be issued or unavailable.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Issue failed. The copy may already be issued or unavailable.");
     }
   }
 
@@ -522,17 +548,24 @@ export default function App() {
       return;
     }
 
+    const maxDays = scanResult?.loanPeriodDays ?? issueLoanDays;
+    if (issueLoanDays < 1 || issueLoanDays > maxDays) {
+      setMessage(`Borrow days must be between 1 and ${maxDays}.`);
+      return;
+    }
+
     try {
       const transaction = await issueBookByIdentifier(
         currentUser.userId,
         staffBorrowerIdentifierType,
         borrowerIdentifier,
         scanType,
-        bookScanValue
+        bookScanValue,
+        issueLoanDays
       );
       setStaffBorrowerIdentifier(borrowerIdentifier);
       setScanValue(bookScanValue);
-      setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName}. Return by ${transaction.dueOn}.`);
+      setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName} for ${issueLoanDays} day(s). Return by ${transaction.dueOn}.`);
       setBooks(await searchBooks(query));
       if (selectedUserDetails) {
         setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
@@ -603,10 +636,17 @@ export default function App() {
       return;
     }
 
+    const renewalDays = renewDaysByTransaction[book.transactionId]
+      ?? Math.min(7, book.loanPeriodDays);
+    if (renewalDays < 1 || renewalDays > book.loanPeriodDays) {
+      setMessage(`Renewal days must be between 1 and ${book.loanPeriodDays}.`);
+      return;
+    }
+
     try {
-      const transaction = await renewTransaction(book.transactionId, currentUser.userId);
+      const transaction = await renewTransaction(book.transactionId, currentUser.userId, renewalDays);
       setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
-      setMessage(`${transaction.bookTitle} renewed until ${transaction.dueOn}.`);
+      setMessage(`${transaction.bookTitle} renewed by ${renewalDays} day(s) until ${transaction.dueOn}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Renewal failed.");
     }
@@ -850,6 +890,71 @@ export default function App() {
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Book add failed.");
+    }
+  }
+
+  async function handleLoadBookForEdit() {
+    const ssn = bookEditForm.ssnNumber.trim();
+    if (!ssn) {
+      setMessage("Enter a book SSN to load details for editing.");
+      return;
+    }
+
+    try {
+      const matches = await searchBooks(ssn);
+      const book = matches.find((item) => item.ssnNumber === ssn) ?? matches[0];
+      if (!book) {
+        setMessage("Book not found for the entered SSN.");
+        return;
+      }
+
+      setBookEditForm({
+        ssnNumber: book.ssnNumber,
+        title: book.title,
+        author: book.author,
+        publisher: book.publisher ?? "",
+        category: book.category,
+        finePerDay: book.finePerDay,
+        loanPeriodDays: book.loanPeriodDays
+      });
+      setMessage(`Loaded ${book.title} for editing.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load book details.");
+    }
+  }
+
+  async function handleUpdateBook(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+
+    if (!currentUser) {
+      setMessage("Sign in as librarian or admin to edit books.");
+      return;
+    }
+
+    const ssn = bookEditForm.ssnNumber.trim();
+    if (!ssn) {
+      setMessage("Enter the book SSN before saving changes.");
+      return;
+    }
+
+    try {
+      const book = await updateBook(
+        ssn,
+        {
+          title: bookEditForm.title,
+          author: bookEditForm.author,
+          publisher: bookEditForm.publisher || undefined,
+          category: bookEditForm.category,
+          finePerDay: bookEditForm.finePerDay,
+          loanPeriodDays: bookEditForm.loanPeriodDays
+        },
+        currentUser.userId
+      );
+      setBooks(await searchBooks(query));
+      setMessage(`${book.title} updated.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update book.");
     }
   }
 
@@ -1281,6 +1386,20 @@ export default function App() {
                 </div>
               </div>
 
+              {scanResult && (
+                <label className="loan-days-field">
+                  Borrow for (days)
+                  <input
+                    type="number"
+                    min={1}
+                    max={scanResult.loanPeriodDays}
+                    value={issueLoanDays}
+                    onChange={(event) => setIssueLoanDays(Number(event.target.value))}
+                  />
+                  <span className="list-note">Maximum loan period for this book is {scanResult.loanPeriodDays} day(s).</span>
+                </label>
+              )}
+
               <div className="action-row issue-action-row">
                 {isBorrower && (
                   <button type="button" onClick={() => void handleIssue()}>
@@ -1511,6 +1630,74 @@ export default function App() {
               </label>
               <button type="submit">Add Book</button>
             </form>
+
+            <div className="staff-issue-panel">
+              <h3>Edit Book Details</h3>
+              <p>Load a book by SSN, then update title, author, publisher, category, fine, or loan period.</p>
+              <div className="staff-issue-grid remove-copy-grid">
+                <input
+                  placeholder="Book SSN number"
+                  value={bookEditForm.ssnNumber}
+                  onChange={(event) => setBookEditForm({ ...bookEditForm, ssnNumber: event.target.value })}
+                />
+                <button type="button" className="secondary-button" onClick={() => void handleLoadBookForEdit()}>
+                  Load Book
+                </button>
+              </div>
+              <form className="management-form" onSubmit={(event) => void handleUpdateBook(event)}>
+                <label>
+                  Book Title
+                  <input
+                    required
+                    value={bookEditForm.title}
+                    onChange={(event) => setBookEditForm({ ...bookEditForm, title: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Author
+                  <input
+                    required
+                    value={bookEditForm.author}
+                    onChange={(event) => setBookEditForm({ ...bookEditForm, author: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Publisher
+                  <input
+                    value={bookEditForm.publisher ?? ""}
+                    onChange={(event) => setBookEditForm({ ...bookEditForm, publisher: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Category
+                  <input
+                    required
+                    value={bookEditForm.category}
+                    onChange={(event) => setBookEditForm({ ...bookEditForm, category: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Fine Per Day
+                  <input
+                    min={0}
+                    type="number"
+                    value={bookEditForm.finePerDay}
+                    onChange={(event) => setBookEditForm({ ...bookEditForm, finePerDay: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  Loan Period Days
+                  <input
+                    min={1}
+                    max={14}
+                    type="number"
+                    value={bookEditForm.loanPeriodDays}
+                    onChange={(event) => setBookEditForm({ ...bookEditForm, loanPeriodDays: Number(event.target.value) })}
+                  />
+                </label>
+                <button type="submit">Save Book Changes</button>
+              </form>
+            </div>
 
             {generatedBookQrs.length > 0 && (
               <div className="qr-window-launch">
@@ -2017,32 +2204,53 @@ export default function App() {
                         /day
                       </span>
                     </div>
-                    <div className="compact-actions">
+                    <div className="issued-book-actions">
                       <span className="availability">Fine Rs {book.fineAmount}</span>
-                      {canIssueToStudents && book.fineAmount > 0 && (
-                        <label className="inline-checkbox">
-                          <input
-                            type="checkbox"
-                            checked={resetFineOnReturn[book.transactionId] ?? false}
-                            onChange={(event) =>
-                              setResetFineOnReturn((current) => ({
-                                ...current,
-                                [book.transactionId]: event.target.checked
-                              }))
-                            }
-                          />
-                          Reset fine (Rs 0)
-                        </label>
+                      {canIssueToStudents && (
+                        <div className="renew-panel">
+                          <div className="renew-panel-controls">
+                            <label htmlFor={`renew-days-${book.transactionId}`}>Extend by</label>
+                            <input
+                              id={`renew-days-${book.transactionId}`}
+                              type="number"
+                              min={1}
+                              max={book.loanPeriodDays}
+                              value={renewDaysByTransaction[book.transactionId] ?? Math.min(7, book.loanPeriodDays)}
+                              onChange={(event) =>
+                                setRenewDaysByTransaction((current) => ({
+                                  ...current,
+                                  [book.transactionId]: Number(event.target.value)
+                                }))
+                              }
+                            />
+                            <span>days · max {book.loanPeriodDays}</span>
+                          </div>
+                          <button type="button" onClick={() => void handleRenewIssuedBook(book)}>
+                            Renew loan
+                          </button>
+                        </div>
                       )}
                       {canIssueToStudents && (
-                        <>
-                          <button type="button" onClick={() => void handleRenewIssuedBook(book)}>
-                            Renew
-                          </button>
+                        <div className="return-panel">
+                          {book.fineAmount > 0 && (
+                            <label className="inline-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={resetFineOnReturn[book.transactionId] ?? false}
+                                onChange={(event) =>
+                                  setResetFineOnReturn((current) => ({
+                                    ...current,
+                                    [book.transactionId]: event.target.checked
+                                  }))
+                                }
+                              />
+                              Reset fine (Rs 0)
+                            </label>
+                          )}
                           <button type="button" className="danger-button" onClick={() => void handleReturnIssuedBook(book)}>
-                            Return
+                            Return book
                           </button>
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>

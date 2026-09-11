@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class CirculationService implements CirculationUseCase {
 
-    private static final int RENEWAL_DAYS = 7;
+    private static final int DEFAULT_RENEWAL_DAYS = 7;
 
     private final BookCopyRepository bookCopyRepository;
     private final UserAccountRepository userAccountRepository;
@@ -56,7 +56,7 @@ public class CirculationService implements CirculationUseCase {
             throw new IllegalStateException("Students and faculty can issue books only to themselves"); // if studenty or faculty are trying to issue book to nsomeone else other than themselves then throw this error
         }
 
-        return issueCopyToBorrower(copy, borrower, actor);
+        return issueCopyToBorrower(copy, borrower, actor, request.loanDays());
     }
 
     @Override
@@ -83,14 +83,19 @@ public class CirculationService implements CirculationUseCase {
             );
         }
 
-        return issueCopyToBorrower(copy, borrower, actor);
+        return issueCopyToBorrower(copy, borrower, actor, request.loanDays());
     }
 
     private String cleanValue(String value) {
         return value == null ? "" : value.trim();
     }
 
-    private CirculationResponse issueCopyToBorrower(BookCopy copy, UserAccount borrower, UserAccount actor) {
+    private CirculationResponse issueCopyToBorrower(
+        BookCopy copy,
+        UserAccount borrower,
+        UserAccount actor,
+        Integer requestedLoanDays
+    ) {
         if (!hasAnyRole(borrower, UserRole.STUDENT, UserRole.FACULTY)) {
             throw new IllegalStateException("Only students or faculty can borrow books");
         }
@@ -99,17 +104,30 @@ public class CirculationService implements CirculationUseCase {
             throw new IllegalStateException("Book copy is not available for issue");
         }
 
+        int maxLoanDays = copy.getBook().getLoanPeriodDays();
+        int loanDays = requestedLoanDays == null ? maxLoanDays : requestedLoanDays;
+        if (loanDays < 1 || loanDays > maxLoanDays) {
+            throw new IllegalArgumentException(
+                "Borrow days must be between 1 and the book loan period (" + maxLoanDays + " days)"
+            );
+        }
+
         LocalDate issuedOn = LocalDate.now();
         CirculationTransaction transaction = new CirculationTransaction(
             copy,
             borrower,
             issuedOn,
-            issuedOn.plusDays(copy.getBook().getLoanPeriodDays())
+            issuedOn.plusDays(loanDays)
         );
         copy.markIssued();
 
         CirculationTransaction savedTransaction = circulationTransactionRepository.save(transaction);
-        String auditDetails = copy.getAccessionNumber() + " to " + borrower.getFullName();
+        String auditDetails = copy.getAccessionNumber()
+            + " to "
+            + borrower.getFullName()
+            + " for "
+            + loanDays
+            + " days";
         auditLogger.record(AuditAction.BOOK_ISSUE, actor.getId(), "BookCopy", copy.getId(), auditDetails);
         return CirculationResponse.from(savedTransaction);
     }
@@ -140,9 +158,16 @@ public class CirculationService implements CirculationUseCase {
             .orElseThrow(() -> new IllegalStateException("Book copy is not currently issued"));
 
         transaction.markReturned(LocalDate.now(), resetFine);
-        String auditDetails = resetFine
-            ? copy.getAccessionNumber() + " (fine reset)"
-            : copy.getAccessionNumber();
+        UserAccount borrower = transaction.getBorrower();
+        String borrowerCode = userIdentifierRepository
+            .findByUserAndType(borrower, IdentifierType.ROLL_NUMBER)
+            .map(UserIdentifier::getValue)
+            .orElse(null);
+        String borrowerLabel = borrowerCode == null || borrowerCode.isBlank()
+            ? borrower.getFullName()
+            : borrower.getFullName() + " (" + borrowerCode + ")";
+        String auditDetails = borrowerLabel + " · " + copy.getAccessionNumber()
+            + (resetFine ? " (fine reset)" : "");
         auditLogger.record(
             AuditAction.BOOK_RETURN,
             actor.getId(),
@@ -155,7 +180,7 @@ public class CirculationService implements CirculationUseCase {
 
     @Override
     @Transactional
-    public CirculationResponse renew(UUID transactionId, UUID actorUserId) {
+    public CirculationResponse renew(UUID transactionId, Integer renewalDays, UUID actorUserId) {
         UserAccount actor = findActor(actorUserId);
 
         if (!hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
@@ -169,13 +194,31 @@ public class CirculationService implements CirculationUseCase {
             throw new IllegalStateException("Only issued books can be renewed");
         }
 
-        transaction.renew(RENEWAL_DAYS);
+        int maxRenewalDays = transaction.getBookCopy().getBook().getLoanPeriodDays();
+        int days = renewalDays == null ? Math.min(DEFAULT_RENEWAL_DAYS, maxRenewalDays) : renewalDays;
+        if (days < 1 || days > maxRenewalDays) {
+            throw new IllegalArgumentException(
+                "Renewal days must be between 1 and the book loan period (" + maxRenewalDays + " days)"
+            );
+        }
+
+        transaction.renew(days);
+        UserAccount borrower = transaction.getBorrower();
+        String borrowerCode = userIdentifierRepository
+            .findByUserAndType(borrower, IdentifierType.ROLL_NUMBER)
+            .map(UserIdentifier::getValue)
+            .orElse(null);
+        String borrowerLabel = borrowerCode == null || borrowerCode.isBlank()
+            ? borrower.getFullName()
+            : borrower.getFullName() + " (" + borrowerCode + ")";
+        String accessionNumber = transaction.getBookCopy().getAccessionNumber();
+        String auditDetails = borrowerLabel + " · " + accessionNumber + " · " + days + " days";
         auditLogger.record(
             AuditAction.BOOK_RENEW,
             actor.getId(),
             "CirculationTransaction",
             transaction.getId(),
-            "Renewed for " + RENEWAL_DAYS + " days"
+            auditDetails
         );
         return CirculationResponse.from(transaction);
     }

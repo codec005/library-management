@@ -11,7 +11,7 @@ public interface CirculationUseCase {
 
     CirculationResponse returnCopy(UUID bookCopyId, boolean resetFine, UUID actorUserId);
 
-    CirculationResponse renew(UUID transactionId, UUID actorUserId);
+    CirculationResponse renew(UUID transactionId, Integer renewalDays, UUID actorUserId);
 
     List<CirculationResponse> listIssuedBooksForUser(UUID borrowerId, UUID actorUserId);
 

@@ -13,7 +13,7 @@ import java.util.UUID;
 public class AuditEvent extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 64)
     private AuditAction action;
 
     private UUID actorUserId;

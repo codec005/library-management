@@ -122,16 +122,36 @@ public class AuditService implements AuditLogger, AuditUseCase {
                 + (details == null ? "" : " (" + registeredRole(details) + ")");
             case USER_QR_GENERATE -> doneBy + " generated QR for " + rememberedUserLabel(details, targetUser);
             case BOOK_ADD -> doneBy + " added book" + (details == null ? "" : " " + details);
+            case BOOK_UPDATE -> doneBy + " updated book" + (details == null ? "" : " " + details);
             case BOOK_REMOVE -> doneBy + " removed " + (event.getTargetType() == null ? "book" : friendlyTarget(event.getTargetType()))
                 + (details == null ? "" : " " + details);
             case BOOK_SCAN -> doneBy + " scanned book copy"
                 + (details == null ? "" : " via " + friendlyScanDetails(details));
             case BOOK_ISSUE -> doneBy + " issued book copy"
                 + (details == null ? "" : " " + details);
-            case BOOK_RETURN -> doneBy + " returned book copy"
-                + (details == null ? "" : " " + details);
-            case BOOK_RENEW -> doneBy + " renewed book"
-                + (details == null ? "" : " · " + details);
+            case BOOK_RETURN -> {
+                String borrowerLabel = labelFromAuditDetails(details);
+                String copyPart = detailsAfterLabel(details);
+                if (borrowerLabel != null && copyPart != null && !borrowerLabel.equals(details)) {
+                    yield borrowerLabel + " returned book copy " + copyPart;
+                }
+                yield doneBy + " returned book copy" + (details == null ? "" : " " + details);
+            }
+            case BOOK_RENEW -> {
+                if (details != null && details.contains("·")) {
+                    String[] parts = details.split("·");
+                    if (parts.length >= 3) {
+                        yield doneBy
+                            + " renewed book copy "
+                            + parts[1].trim()
+                            + " for "
+                            + parts[0].trim()
+                            + " by "
+                            + parts[2].trim();
+                    }
+                }
+                yield doneBy + " renewed book" + (details == null ? "" : " · " + details);
+            }
         };
     }
 
@@ -164,6 +184,7 @@ public class AuditService implements AuditLogger, AuditUseCase {
             case USER_REMOVE -> "User deleted";
             case USER_UPDATE -> "User updated";
             case BOOK_ADD -> "Book added";
+            case BOOK_UPDATE -> "Book updated";
             case BOOK_REMOVE -> "Book removed";
             case USER_QR_GENERATE -> "User QR generated";
         };
@@ -261,6 +282,15 @@ public class AuditService implements AuditLogger, AuditUseCase {
         }
 
         return method + " " + parts[1].trim();
+    }
+
+    private String detailsAfterLabel(String details) {
+        if (details == null || details.isBlank() || !details.contains("·")) {
+            return null;
+        }
+
+        String[] parts = details.split("·", 2);
+        return parts.length > 1 ? parts[1].trim() : null;
     }
 
     private String friendlyTarget(String targetType) {

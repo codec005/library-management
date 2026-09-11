@@ -12,6 +12,8 @@ public interface CatalogService {
 
     BookSummary addBook(BookCreateRequest request, UUID actorUserId);
 
+    BookSummary updateBook(String ssnNumber, BookUpdateRequest request, UUID actorUserId);
+
     void removeBook(String ssnNumber, UUID actorUserId);
 
     List<BookCopySummary> listBookCopies(String ssnNumber, UUID actorUserId);

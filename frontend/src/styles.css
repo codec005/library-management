@@ -697,6 +697,91 @@ label {
   width: auto;
 }
 
+.renew-days-field input {
+  margin-left: 0.35rem;
+  max-width: 4.5rem;
+  padding: 0.45rem 0.55rem;
+}
+
+.issued-book-actions {
+  align-items: stretch;
+  display: grid;
+  gap: 0.65rem;
+  justify-items: end;
+  min-width: min(100%, 16rem);
+}
+
+.renew-panel,
+.return-panel {
+  background: rgba(241, 245, 249, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 14px;
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  width: 100%;
+}
+
+.renew-panel {
+  border-color: rgba(37, 99, 235, 0.22);
+}
+
+.return-panel {
+  border-color: rgba(248, 113, 113, 0.28);
+}
+
+.renew-panel-controls {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  font-weight: 700;
+  gap: 0.4rem;
+}
+
+.renew-panel-controls label {
+  color: var(--text);
+  margin: 0;
+}
+
+.renew-panel-controls input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+  max-width: 4.25rem;
+  padding: 0.45rem 0.55rem;
+  width: 4.25rem;
+}
+
+.renew-panel-controls input::-webkit-outer-spin-button,
+.renew-panel-controls input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.renew-panel button,
+.return-panel button {
+  width: 100%;
+}
+
+.issued-books-window .compact-row {
+  align-items: flex-start;
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 16rem);
+}
+
+@media (max-width: 760px) {
+  .issued-books-window .compact-row {
+    grid-template-columns: 1fr;
+  }
+
+  .issued-book-actions {
+    justify-items: stretch;
+    min-width: 0;
+  }
+}
+
 .user-list h3 {
   margin: 0.5rem 0 0;
 }
@@ -1017,6 +1102,19 @@ label {
   line-height: 1.5;
 }
 
+.loan-days-field {
+  background: rgba(241, 245, 249, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 18px;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.85rem 1rem;
+}
+
+.loan-days-field input {
+  max-width: 10rem;
+}
+
 .issue-hint {
   color: var(--muted);
   font-size: 0.92rem;
@@ -1129,20 +1227,17 @@ label {
 }
 
 .remove-copy-grid button,
-.issued-books-window .compact-actions button {
+.issued-books-window .renew-panel button,
+.issued-books-window .return-panel button {
   padding: 0.5rem 0.7rem;
 }
 
 .issued-books-window {
-  max-width: 860px;
+  max-width: 960px;
 }
 
 .full-catalog-window {
   max-width: 920px;
-}
-
-.issued-books-window .compact-row {
-  align-items: flex-start;
 }
 
 .scan-result div {
