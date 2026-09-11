@@ -24,14 +24,21 @@ public record PageResponse<T>(
     }
 
     public static Pageable pageable(int page, int size) {
-        int safeSize = size == 20 || size == 50 ? size : 10;
+        int safeSize = sanitizeSize(size);
         int safePage = Math.max(page, 0);
         return PageRequest.of(safePage, safeSize);
     }
 
     public static Pageable pageable(int page, int size, Sort sort) {
-        int safeSize = size == 20 || size == 50 ? size : 10;
+        int safeSize = sanitizeSize(size);
         int safePage = Math.max(page, 0);
         return PageRequest.of(safePage, safeSize, sort);
+    }
+
+    private static int sanitizeSize(int size) {
+        if (size == 4 || size == 20 || size == 50) {
+            return size;
+        }
+        return 10;
     }
 }

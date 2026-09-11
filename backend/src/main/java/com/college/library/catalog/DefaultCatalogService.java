@@ -41,34 +41,62 @@ public class DefaultCatalogService implements CatalogService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<BookSummary> searchBooks(String query, boolean availableOnly, int page, int size) {
-        String cleanedQuery = query == null ? "" : query.trim();
+    public PageResponse<BookSummary> searchBooks(
+        String query,
+        String category,
+        String author,
+        String publisher,
+        boolean availableOnly,
+        int page,
+        int size
+    ) {
+        String cleanedQuery = cleanValue(query);
+        String cleanedCategory = cleanValue(category);
+        String cleanedAuthor = cleanValue(author);
+        String cleanedPublisher = cleanValue(publisher);
         var pageable = PageResponse.pageable(page, size, Sort.by("title").ascending());
 
-        if (cleanedQuery.isEmpty()) {
-            return PageResponse.from(bookRepository.findAllFiltered(availableOnly, pageable).map(BookSummary::from));
-        }
-
-        var exact = bookRepository.findBySsnNumberIgnoreCase(cleanedQuery);
-        if (exact.isPresent()) {
-            Book book = exact.get();
-            boolean include = !availableOnly || book.getCopies().stream()
-                .anyMatch(copy -> copy.getStatus() == BookCopyStatus.AVAILABLE);
-            if (include) {
-                return PageResponse.from(
-                    new PageImpl<>(
-                        java.util.List.of(BookSummary.from(book)),
-                        pageable,
-                        1
-                    )
-                );
+        if (!cleanedQuery.isEmpty()) {
+            var exact = bookRepository.findBySsnNumberIgnoreCase(cleanedQuery);
+            if (exact.isPresent()) {
+                Book book = exact.get();
+                boolean matchesFilters = matchesCatalogFilters(book, cleanedCategory, cleanedAuthor, cleanedPublisher);
+                boolean include = matchesFilters && (!availableOnly || book.getCopies().stream()
+                    .anyMatch(copy -> copy.getStatus() == BookCopyStatus.AVAILABLE));
+                if (include) {
+                    return PageResponse.from(new PageImpl<>(List.of(BookSummary.from(book)), pageable, 1));
+                }
+                return PageResponse.from(org.springframework.data.domain.Page.empty(pageable));
             }
-            return PageResponse.from(org.springframework.data.domain.Page.empty(pageable));
         }
 
         return PageResponse.from(
-            bookRepository.searchPrefix(cleanedQuery, availableOnly, pageable).map(BookSummary::from)
+            bookRepository
+                .search(cleanedQuery, cleanedCategory, cleanedAuthor, cleanedPublisher, availableOnly, pageable)
+                .map(BookSummary::from)
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> listCategories() {
+        return bookRepository.findDistinctCategories();
+    }
+
+    private boolean matchesCatalogFilters(Book book, String category, String author, String publisher) {
+        if (!category.isEmpty() && !category.equalsIgnoreCase(book.getCategory())) {
+            return false;
+        }
+        if (!author.isEmpty() && !book.getAuthor().toLowerCase().startsWith(author.toLowerCase())) {
+            return false;
+        }
+        if (!publisher.isEmpty()) {
+            String bookPublisher = book.getPublisher() == null ? "" : book.getPublisher();
+            if (!bookPublisher.toLowerCase().startsWith(publisher.toLowerCase())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override

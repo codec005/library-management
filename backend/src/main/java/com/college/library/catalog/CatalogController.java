@@ -32,11 +32,21 @@ public class CatalogController {
     @GetMapping("/books")
     ResponseEntity<PageResponse<BookSummary>> searchBooks(
         @RequestParam(defaultValue = "") String query,
+        @RequestParam(defaultValue = "") String category,
+        @RequestParam(defaultValue = "") String author,
+        @RequestParam(defaultValue = "") String publisher,
         @RequestParam(defaultValue = "false") boolean availableOnly,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "10") int size
     ) {
-        return ResponseEntity.ok(catalogService.searchBooks(query, availableOnly, page, size));
+        return ResponseEntity.ok(
+            catalogService.searchBooks(query, category, author, publisher, availableOnly, page, size)
+        );
+    }
+
+    @GetMapping("/categories")
+    ResponseEntity<List<String>> listCategories() {
+        return ResponseEntity.ok(catalogService.listCategories());
     }
 
     @GetMapping("/scan")

@@ -27,6 +27,7 @@ import {
   issueBookByIdentifier,
   issueBookCopy,
   listAuditEvents,
+  listBookCategories,
   listBookCopies,
   listIssuedBooksForUser,
   listUsers,
@@ -46,48 +47,6 @@ import {
 
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 const COPYRIGHT_YEAR = new Date().getFullYear();
-
-type GroupedCatalogBook = {
-  title: string;
-  authors: string[];
-  categories: string[];
-  availableCopies: number;
-  totalCopies: number;
-};
-
-function groupBooksByTitle(books: BookSummary[], onlyAvailable = false): GroupedCatalogBook[] {
-  const grouped = new Map<string, GroupedCatalogBook>();
-
-  for (const book of books) {
-    if (onlyAvailable && book.availableCopies <= 0) {
-      continue;
-    }
-
-    const key = book.title.trim().toLowerCase();
-    const existing = grouped.get(key);
-    if (!existing) {
-      grouped.set(key, {
-        title: book.title.trim(),
-        authors: book.author ? [book.author] : [],
-        categories: book.category ? [book.category] : [],
-        availableCopies: book.availableCopies,
-        totalCopies: book.totalCopies
-      });
-      continue;
-    }
-
-    existing.availableCopies += book.availableCopies;
-    existing.totalCopies += book.totalCopies;
-    if (book.author && !existing.authors.some((author) => author.toLowerCase() === book.author.toLowerCase())) {
-      existing.authors.push(book.author);
-    }
-    if (book.category && !existing.categories.some((category) => category.toLowerCase() === book.category.toLowerCase())) {
-      existing.categories.push(book.category);
-    }
-  }
-
-  return Array.from(grouped.values()).sort((left, right) => left.title.localeCompare(right.title));
-}
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
@@ -176,8 +135,17 @@ export default function App() {
   const [collegeName, setCollegeName] = useState(() => localStorage.getItem("collegeName") ?? "");
   const [query, setQuery] = useState("");
   const [books, setBooks] = useState<BookSummary[]>([]);
+  const [availableTotalElements, setAvailableTotalElements] = useState(0);
+  const [bookCategories, setBookCategories] = useState<string[]>([]);
+  const [availableCategory, setAvailableCategory] = useState("");
+  const [availableAuthor, setAvailableAuthor] = useState("");
+  const [availablePublisher, setAvailablePublisher] = useState("");
   const [isCatalogWindowOpen, setIsCatalogWindowOpen] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogCategory, setCatalogCategory] = useState("");
+  const [catalogAuthor, setCatalogAuthor] = useState("");
+  const [catalogPublisher, setCatalogPublisher] = useState("");
+  const [catalogAvailableOnly, setCatalogAvailableOnly] = useState(false);
   const [catalogBooks, setCatalogBooks] = useState<BookSummary[]>([]);
   const [catalogPage, setCatalogPage] = useState(0);
   const [catalogPageSize, setCatalogPageSize] = useState<PageSize>(10);
@@ -303,8 +271,6 @@ export default function App() {
   const returnBorrowerValue = returnBorrowerIdentifier.trim();
   const returnBookValue = returnScanValue.trim();
   const isStaffReturnReady = canIssueToStudents && returnBorrowerValue.length > 0 && returnBookValue.length > 0;
-  const availableCatalogBooks = useMemo(() => groupBooksByTitle(books, true), [books]);
-  const visibleCatalogBooks = availableCatalogBooks;
   const myTotalFine = useMemo(
     () => myIssuedBooks.reduce((total, book) => total + book.fineAmount, 0),
     [myIssuedBooks]
@@ -319,23 +285,46 @@ export default function App() {
 
   useEffect(() => {
     void refreshAvailableBooks("");
+    listBookCategories()
+      .then(setBookCategories)
+      .catch(() => setBookCategories([]));
   }, []);
 
-  async function refreshAvailableBooks(searchQuery = query) {
+  async function refreshAvailableBooks(
+    searchQuery = query,
+    filters?: { category?: string; author?: string; publisher?: string }
+  ) {
     try {
-      const result = await searchBooks(searchQuery, { availableOnly: true, page: 0, size: 10 });
+      const result = await searchBooks(searchQuery, {
+        availableOnly: true,
+        category: filters?.category ?? availableCategory,
+        author: filters?.author ?? availableAuthor,
+        publisher: filters?.publisher ?? availablePublisher,
+        page: 0,
+        size: 4
+      });
       setBooks(result.content);
+      setAvailableTotalElements(result.totalElements);
     } catch {
       setBooks([]);
+      setAvailableTotalElements(0);
     }
   }
 
   async function refreshCatalogBooks(
     searchQuery = catalogQuery,
     page = catalogPage,
-    size: PageSize = catalogPageSize
+    size: PageSize = catalogPageSize,
+    filters?: { category?: string; author?: string; publisher?: string; availableOnly?: boolean }
   ) {
-    const result = await searchBooks(searchQuery, { page, size });
+    const result = await searchBooks(searchQuery, {
+      availableOnly: filters?.availableOnly ?? catalogAvailableOnly,
+      category: filters?.category ?? catalogCategory,
+      author: filters?.author ?? catalogAuthor,
+      publisher: filters?.publisher ?? catalogPublisher,
+      page,
+      size
+    });
     setCatalogBooks(result.content);
     setCatalogPage(result.page);
     setCatalogPageSize(result.size === 20 || result.size === 50 ? result.size : 10);
@@ -510,9 +499,19 @@ export default function App() {
 
   async function handleOpenCatalogWindow() {
     try {
+      const nextFilters = {
+        category: availableCategory,
+        author: availableAuthor,
+        publisher: availablePublisher,
+        availableOnly: true
+      };
       setCatalogQuery(query);
+      setCatalogCategory(availableCategory);
+      setCatalogAuthor(availableAuthor);
+      setCatalogPublisher(availablePublisher);
+      setCatalogAvailableOnly(true);
       setCatalogPage(0);
-      await refreshCatalogBooks(query, 0, catalogPageSize);
+      await refreshCatalogBooks(query, 0, catalogPageSize, nextFilters);
       setIsCatalogWindowOpen(true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to open catalog.");
@@ -1035,6 +1034,9 @@ export default function App() {
     try {
       const book = await addBook(bookForm, currentUser.userId);
       await refreshAvailableBooks(query);
+      listBookCategories()
+        .then(setBookCategories)
+        .catch(() => undefined);
       setBookForm({
         ssnNumber: "",
         title: "",
@@ -1473,26 +1475,75 @@ export default function App() {
             <BookOpen size={22} />
             <div>
               <h2>Available Books</h2>
-              <p>Prefix search by title, author, category, or SSN.</p>
+              <p>Filter by category/author/publisher, then search within those filters.</p>
             </div>
+          </div>
+
+          <div className="catalog-filters">
+            <label>
+              Category
+              <select value={availableCategory} onChange={(event) => setAvailableCategory(event.target.value)}>
+                <option value="">All categories</option>
+                {bookCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Author
+              <input
+                placeholder="Author starts with"
+                value={availableAuthor}
+                onChange={(event) => setAvailableAuthor(event.target.value)}
+              />
+            </label>
+            <label>
+              Publisher
+              <input
+                placeholder="Publisher starts with"
+                value={availablePublisher}
+                onChange={(event) => setAvailablePublisher(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => void refreshAvailableBooks(query)}
+            >
+              Apply Filters
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setAvailableCategory("");
+                setAvailableAuthor("");
+                setAvailablePublisher("");
+                void refreshAvailableBooks(query, { category: "", author: "", publisher: "" });
+              }}
+            >
+              Clear Filters
+            </button>
           </div>
 
           <form className="inline-form" onSubmit={handleSearch}>
             <Search size={18} />
-            <input placeholder="Search books" value={query} onChange={(event) => setQuery(event.target.value)} />
+            <input placeholder="Search within filters" value={query} onChange={(event) => setQuery(event.target.value)} />
             <button type="submit">Search</button>
           </form>
 
           <div className="book-list">
-            {visibleCatalogBooks.length === 0 ? (
+            {books.length === 0 ? (
               <div className="empty-state">No available copies match your search.</div>
             ) : (
-              visibleCatalogBooks.map((book) => (
-                <div className="book-row" key={book.title.toLowerCase()}>
+              books.map((book) => (
+                <div className="book-row" key={book.ssnNumber}>
                   <div>
                     <strong>{book.title}</strong>
                     <span>
-                      {[book.authors.join(" / "), book.categories.join(" / ")].filter(Boolean).join(" · ")}
+                      {[book.author, book.category].filter(Boolean).join(" · ")}
                     </span>
                   </div>
                   <div className="book-actions">
@@ -1503,8 +1554,12 @@ export default function App() {
             )}
           </div>
 
-          {availableCatalogBooks.length > 0 && (
-            <p className="list-note">Showing available titles for the current search.</p>
+          {books.length > 0 && (
+            <p className="list-note">
+              {availableTotalElements > books.length
+                ? `Showing ${books.length} of ${availableTotalElements} available books.`
+                : `Showing ${books.length} available book${books.length === 1 ? "" : "s"}.`}
+            </p>
           )}
 
           <button type="button" className="secondary-button directory-button" onClick={() => void handleOpenCatalogWindow()}>
@@ -2175,17 +2230,86 @@ export default function App() {
             <div className="modal-header">
               <div>
                 <h2>Full Catalogue</h2>
-                <p>Prefix search by title, author, category, or SSN. Exact SSN matches are instant.</p>
+                <p>Use filters first, then search within the filtered set.</p>
               </div>
               <button type="button" className="secondary-button" onClick={() => setIsCatalogWindowOpen(false)}>
                 Close
               </button>
             </div>
 
+            <div className="catalog-filters">
+              <label>
+                Category
+                <select value={catalogCategory} onChange={(event) => setCatalogCategory(event.target.value)}>
+                  <option value="">All categories</option>
+                  {bookCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Author
+                <input
+                  placeholder="Author starts with"
+                  value={catalogAuthor}
+                  onChange={(event) => setCatalogAuthor(event.target.value)}
+                />
+              </label>
+              <label>
+                Publisher
+                <input
+                  placeholder="Publisher starts with"
+                  value={catalogPublisher}
+                  onChange={(event) => setCatalogPublisher(event.target.value)}
+                />
+              </label>
+              <label className="inline-checkbox catalog-availability-filter">
+                <input
+                  type="checkbox"
+                  checked={catalogAvailableOnly}
+                  onChange={(event) => setCatalogAvailableOnly(event.target.checked)}
+                />
+                Available only
+              </label>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setCatalogPage(0);
+                  void refreshCatalogBooks(catalogQuery, 0, catalogPageSize).catch((error) =>
+                    setMessage(error instanceof Error ? error.message : "Catalog filter failed.")
+                  );
+                }}
+              >
+                Apply Filters
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setCatalogCategory("");
+                  setCatalogAuthor("");
+                  setCatalogPublisher("");
+                  setCatalogAvailableOnly(false);
+                  setCatalogPage(0);
+                  void refreshCatalogBooks(catalogQuery, 0, catalogPageSize, {
+                    category: "",
+                    author: "",
+                    publisher: "",
+                    availableOnly: false
+                  }).catch((error) => setMessage(error instanceof Error ? error.message : "Catalog filter failed."));
+                }}
+              >
+                Clear Filters
+              </button>
+            </div>
+
             <form className="inline-form" onSubmit={handleCatalogWindowSearch}>
               <Search size={18} />
               <input
-                placeholder="Search books"
+                placeholder="Search within filters"
                 value={catalogQuery}
                 onChange={(event) => setCatalogQuery(event.target.value)}
               />

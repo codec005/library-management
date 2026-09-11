@@ -7,7 +7,17 @@ import java.util.UUID;
 
 public interface CatalogService {
 
-    PageResponse<BookSummary> searchBooks(String query, boolean availableOnly, int page, int size);
+    PageResponse<BookSummary> searchBooks(
+        String query,
+        String category,
+        String author,
+        String publisher,
+        boolean availableOnly,
+        int page,
+        int size
+    );
+
+    List<String> listCategories();
 
     Optional<BookCopyScanResponse> scanCopy(ScanType type, String value, UUID actorUserId);
 

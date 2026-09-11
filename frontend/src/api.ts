@@ -214,16 +214,36 @@ export interface PageResponse<T> {
 
 export function searchBooks(
   query: string,
-  options?: { availableOnly?: boolean; page?: number; size?: number }
+  options?: {
+    availableOnly?: boolean;
+    category?: string;
+    author?: string;
+    publisher?: string;
+    page?: number;
+    size?: number;
+  }
 ) {
   const params = new URLSearchParams();
   params.set("query", query);
   if (options?.availableOnly) {
     params.set("availableOnly", "true");
   }
+  if (options?.category?.trim()) {
+    params.set("category", options.category.trim());
+  }
+  if (options?.author?.trim()) {
+    params.set("author", options.author.trim());
+  }
+  if (options?.publisher?.trim()) {
+    params.set("publisher", options.publisher.trim());
+  }
   params.set("page", String(options?.page ?? 0));
   params.set("size", String(options?.size ?? 10));
   return request<PageResponse<BookSummary>>(`/api/catalog/books?${params.toString()}`);
+}
+
+export function listBookCategories() {
+  return request<string[]>("/api/catalog/categories");
 }
 
 export function registerStudentAsGuest(payload: UserRegistrationRequest) { // curreentky disabled
