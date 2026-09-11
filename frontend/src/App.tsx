@@ -36,6 +36,7 @@ import {
   renewTransaction,
   renewBookByIdentifier,
   registerUser,
+  getBookCopyByQrCode,
   removeBook,
   removeBookCopyByQrCode,
   removeUser,
@@ -52,6 +53,65 @@ const COPYRIGHT_YEAR = new Date().getFullYear();
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
+
+type GroupedCatalogBook = {
+  title: string;
+  authors: string[];
+  publishers: string[];
+  categories: string[];
+  availableCopies: number;
+  totalCopies: number;
+  editions: BookSummary[];
+};
+
+function groupBooksByTitle(books: BookSummary[], onlyAvailable = false): GroupedCatalogBook[] {
+  const grouped = new Map<string, GroupedCatalogBook>();
+
+  for (const book of books) {
+    if (onlyAvailable && book.availableCopies <= 0) {
+      continue;
+    }
+
+    const key = book.title.trim().toLowerCase();
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, {
+        title: book.title.trim(),
+        authors: book.author ? [book.author] : [],
+        publishers: book.publisher ? [book.publisher] : [],
+        categories: book.category ? [book.category] : [],
+        availableCopies: book.availableCopies,
+        totalCopies: book.totalCopies,
+        editions: [book]
+      });
+      continue;
+    }
+
+    existing.availableCopies += book.availableCopies;
+    existing.totalCopies += book.totalCopies;
+    existing.editions.push(book);
+    if (book.author && !existing.authors.some((author) => author.toLowerCase() === book.author.toLowerCase())) {
+      existing.authors.push(book.author);
+    }
+    if (
+      book.publisher &&
+      !existing.publishers.some((publisher) => publisher.toLowerCase() === book.publisher!.toLowerCase())
+    ) {
+      existing.publishers.push(book.publisher);
+    }
+    if (
+      book.category &&
+      !existing.categories.some((category) => category.toLowerCase() === book.category.toLowerCase())
+    ) {
+      existing.categories.push(book.category);
+    }
+  }
+
+  return Array.from(grouped.values()).sort((left, right) => left.title.localeCompare(right.title));
+}
+
+const AVAILABLE_BOOKS_PREVIEW_SIZE = 4;
+const AVAILABLE_BOOKS_FETCH_SIZE = 40;
 
 function PaginationControls({
   page,
@@ -153,6 +213,7 @@ export default function App() {
   const [catalogPageSize, setCatalogPageSize] = useState<PageSize>(10);
   const [catalogTotalPages, setCatalogTotalPages] = useState(0);
   const [catalogTotalElements, setCatalogTotalElements] = useState(0);
+  const [selectedTitleGroup, setSelectedTitleGroup] = useState<GroupedCatalogBook | null>(null);
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [userDirectoryPage, setUserDirectoryPage] = useState(0);
   const [userDirectoryPageSize, setUserDirectoryPageSize] = useState<PageSize>(10);
@@ -246,6 +307,7 @@ export default function App() {
     finePerDay: 5,
     loanPeriodDays: 14
   });
+  const [bookEditQrValue, setBookEditQrValue] = useState("");
   const [issueLoanDays, setIssueLoanDays] = useState(14);
   const [message, setMessage] = useState("");
   const [resetFineOnReturn, setResetFineOnReturn] = useState<Record<string, boolean>>({});
@@ -293,6 +355,12 @@ export default function App() {
     () => myIssuedBooks.reduce((total, book) => total + book.fineAmount, 0),
     [myIssuedBooks]
   );
+  const availableCatalogBooks = useMemo(() => groupBooksByTitle(books, true), [books]);
+  const visibleAvailableBooks = useMemo(
+    () => availableCatalogBooks.slice(0, AVAILABLE_BOOKS_PREVIEW_SIZE),
+    [availableCatalogBooks]
+  );
+  const groupedCatalogBooks = useMemo(() => groupBooksByTitle(catalogBooks), [catalogBooks]);
   const selectedUserTotalFine = useMemo(
     () => selectedUserIssuedBooks.reduce((total, book) => total + book.fineAmount, 0),
     [selectedUserIssuedBooks]
@@ -308,8 +376,6 @@ export default function App() {
       .catch(() => setBookCategories([]));
   }, []);
 
-  const AVAILABLE_BOOKS_PREVIEW_SIZE = 4;
-
   async function refreshAvailableBooks(
     searchQuery = query,
     filters?: { category?: string; author?: string; publisher?: string }
@@ -321,9 +387,9 @@ export default function App() {
         author: filters?.author ?? availableAuthor,
         publisher: filters?.publisher ?? availablePublisher,
         page: 0,
-        size: AVAILABLE_BOOKS_PREVIEW_SIZE
+        size: AVAILABLE_BOOKS_FETCH_SIZE
       });
-      setBooks(result.content.slice(0, AVAILABLE_BOOKS_PREVIEW_SIZE));
+      setBooks(result.content);
       setAvailableTotalElements(result.totalElements);
     } catch {
       setBooks([]);
@@ -1188,6 +1254,25 @@ export default function App() {
     }
   }
 
+  async function fillBookEditFormFromSsn(ssn: string) {
+    const matches = await searchBooks(ssn, { page: 0, size: 10 });
+    const book = matches.content.find((item) => item.ssnNumber === ssn) ?? matches.content[0];
+    if (!book) {
+      throw new Error("Book not found for the entered SSN.");
+    }
+
+    setBookEditForm({
+      ssnNumber: book.ssnNumber,
+      title: book.title,
+      author: book.author,
+      publisher: book.publisher ?? "",
+      category: book.category,
+      finePerDay: book.finePerDay,
+      loanPeriodDays: book.loanPeriodDays
+    });
+    return book;
+  }
+
   async function handleLoadBookForEdit() {
     const ssn = bookEditForm.ssnNumber.trim();
     if (!ssn) {
@@ -1196,25 +1281,31 @@ export default function App() {
     }
 
     try {
-      const matches = await searchBooks(ssn, { page: 0, size: 10 });
-      const book = matches.content.find((item) => item.ssnNumber === ssn) ?? matches.content[0];
-      if (!book) {
-        setMessage("Book not found for the entered SSN.");
-        return;
-      }
-
-      setBookEditForm({
-        ssnNumber: book.ssnNumber,
-        title: book.title,
-        author: book.author,
-        publisher: book.publisher ?? "",
-        category: book.category,
-        finePerDay: book.finePerDay,
-        loanPeriodDays: book.loanPeriodDays
-      });
+      const book = await fillBookEditFormFromSsn(ssn);
       setMessage(`Loaded ${book.title} for editing.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to load book details.");
+    }
+  }
+
+  async function handleLoadBookForEditByQr() {
+    if (!currentUser) {
+      setMessage("Sign in as librarian or admin to edit books.");
+      return;
+    }
+
+    const qrCodeValue = bookEditQrValue.trim();
+    if (!qrCodeValue) {
+      setMessage("Enter or scan a book copy QR value to load details for editing.");
+      return;
+    }
+
+    try {
+      const copy = await getBookCopyByQrCode(qrCodeValue, currentUser.userId);
+      const book = await fillBookEditFormFromSsn(copy.bookSsnNumber);
+      setMessage(`Loaded ${book.title} from QR for editing.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load book details from QR.");
     }
   }
 
@@ -1583,7 +1674,7 @@ export default function App() {
             <BookOpen size={22} />
             <div>
               <h2>Available Books</h2>
-              <p>Shows up to 4 matches. Open Full Catalogue for 10/20/50 per page.</p>
+              <p>Titles with the same name are grouped. Shows up to 4 titles. Open Full Catalogue for more.</p>
             </div>
           </div>
 
@@ -1643,15 +1734,15 @@ export default function App() {
           </form>
 
           <div className="book-list">
-            {books.length === 0 ? (
+            {visibleAvailableBooks.length === 0 ? (
               <div className="empty-state">No available copies match your search.</div>
             ) : (
-              books.map((book) => (
-                <div className="book-row" key={book.ssnNumber}>
+              visibleAvailableBooks.map((book) => (
+                <div className="book-row" key={book.title.toLowerCase()}>
                   <div>
                     <strong>{book.title}</strong>
                     <span>
-                      {[book.author, book.category].filter(Boolean).join(" · ")}
+                      {[book.authors.join(" / "), book.categories.join(" / ")].filter(Boolean).join(" · ")}
                     </span>
                   </div>
                   <div className="book-actions">
@@ -1662,11 +1753,12 @@ export default function App() {
             )}
           </div>
 
-          {books.length > 0 && (
+          {visibleAvailableBooks.length > 0 && (
             <p className="list-note">
-              {availableTotalElements > books.length
-                ? `Showing ${books.length} of ${availableTotalElements} available books.`
-                : `Showing ${books.length} available book${books.length === 1 ? "" : "s"}.`}
+              {availableCatalogBooks.length > visibleAvailableBooks.length
+                ? `Showing ${visibleAvailableBooks.length} of ${availableCatalogBooks.length} available titles (grouped by name).`
+                : `Showing ${visibleAvailableBooks.length} available title${visibleAvailableBooks.length === 1 ? "" : "s"} (grouped by name).`}
+              {availableTotalElements > books.length ? ` · ${availableTotalElements} catalog entries match filters.` : ""}
             </p>
           )}
 
@@ -2211,7 +2303,7 @@ export default function App() {
 
             <div className="staff-issue-panel">
               <h3>Edit Book Details</h3>
-              <p>Load a book by SSN, then update title, author, publisher, category, fine, or loan period.</p>
+              <p>Load a book by SSN or copy QR, then update title, author, publisher, category, fine, or loan period.</p>
               <div className="staff-issue-grid remove-copy-grid">
                 <input
                   placeholder="Book SSN number"
@@ -2222,6 +2314,22 @@ export default function App() {
                   Load Book
                 </button>
               </div>
+              <div className="staff-issue-grid remove-copy-grid">
+                <input
+                  placeholder="Example: BOOK-QR-9780132350884"
+                  value={bookEditQrValue}
+                  onChange={(event) => setBookEditQrValue(event.target.value)}
+                />
+                <button type="button" className="secondary-button" onClick={() => void handleLoadBookForEditByQr()}>
+                  Load from QR
+                </button>
+              </div>
+              <QrScanner
+                label="Scan Copy QR"
+                onDetected={(value) => {
+                  setBookEditQrValue(value);
+                }}
+              />
               <form className="management-form" onSubmit={(event) => void handleUpdateBook(event)}>
                 <label>
                   Book Title
@@ -2522,6 +2630,7 @@ export default function App() {
           aria-label="Full catalogue"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
+              setSelectedTitleGroup(null);
               setIsCatalogWindowOpen(false);
             }
           }}
@@ -2530,9 +2639,16 @@ export default function App() {
             <div className="modal-header">
               <div>
                 <h2>Full Catalogue</h2>
-                <p>Use filters first, then search within the filtered set.</p>
+                <p>Same titles are grouped. Click a row for SSN, author, publisher, and other details.</p>
               </div>
-              <button type="button" className="secondary-button" onClick={() => setIsCatalogWindowOpen(false)}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setSelectedTitleGroup(null);
+                  setIsCatalogWindowOpen(false);
+                }}
+              >
                 Close
               </button>
             </div>
@@ -2617,21 +2733,27 @@ export default function App() {
             </form>
 
             <div className="book-list">
-              {catalogBooks.length === 0 ? (
+              {groupedCatalogBooks.length === 0 ? (
                 <div className="empty-state">No books found.</div>
               ) : (
-                catalogBooks.map((book) => (
-                  <div className="book-row" key={book.ssnNumber}>
+                groupedCatalogBooks.map((book) => (
+                  <button
+                    type="button"
+                    className="book-row book-row-button"
+                    key={book.title.toLowerCase()}
+                    onClick={() => setSelectedTitleGroup(book)}
+                  >
                     <div>
                       <strong>{book.title}</strong>
                       <span>
-                        {[book.author, book.category].filter(Boolean).join(" · ")}
+                        {[book.authors.join(" / "), book.categories.join(" / ")].filter(Boolean).join(" · ")}
+                        {book.editions.length > 1 ? ` · ${book.editions.length} catalog entries` : ""}
                       </span>
                     </div>
                     <div className="book-actions">
                       <span className="availability">{book.availableCopies}/{book.totalCopies} available</span>
                     </div>
-                  </div>
+                  </button>
                 ))
               )}
             </div>
@@ -2654,6 +2776,91 @@ export default function App() {
                 );
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {selectedTitleGroup && (
+        <div
+          className="modal-backdrop secondary-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${selectedTitleGroup.title} details`}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setSelectedTitleGroup(null);
+            }
+          }}
+        >
+          <div className="modal-panel title-detail-window">
+            <div className="modal-header">
+              <div>
+                <h2>{selectedTitleGroup.title}</h2>
+                <p>
+                  {selectedTitleGroup.editions.length} catalog entr
+                  {selectedTitleGroup.editions.length === 1 ? "y" : "ies"} ·{" "}
+                  {selectedTitleGroup.availableCopies}/{selectedTitleGroup.totalCopies} copies available
+                </p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setSelectedTitleGroup(null)}>
+                Close
+              </button>
+            </div>
+
+            <div className="title-detail-summary">
+              <p>
+                <strong>Authors:</strong> {selectedTitleGroup.authors.join(" / ") || "—"}
+              </p>
+              <p>
+                <strong>Publishers:</strong> {selectedTitleGroup.publishers.join(" / ") || "—"}
+              </p>
+              <p>
+                <strong>Categories:</strong> {selectedTitleGroup.categories.join(" / ") || "—"}
+              </p>
+            </div>
+
+            <div className="book-list title-edition-list">
+              {selectedTitleGroup.editions.map((edition) => (
+                <div className="book-row title-edition-row" key={edition.ssnNumber}>
+                  <div>
+                    <strong>SSN {edition.ssnNumber}</strong>
+                    <span>
+                      {[edition.author, edition.publisher, edition.category].filter(Boolean).join(" · ")}
+                    </span>
+                  </div>
+                  <div className="scan-result title-edition-details">
+                    <dl>
+                      <div>
+                        <dt>Author</dt>
+                        <dd>{edition.author || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Publisher</dt>
+                        <dd>{edition.publisher || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Category</dt>
+                        <dd>{edition.category || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Fine / day</dt>
+                        <dd>{edition.finePerDay}</dd>
+                      </div>
+                      <div>
+                        <dt>Loan days</dt>
+                        <dd>{edition.loanPeriodDays}</dd>
+                      </div>
+                      <div>
+                        <dt>Availability</dt>
+                        <dd>
+                          {edition.availableCopies}/{edition.totalCopies}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

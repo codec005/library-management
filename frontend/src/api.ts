@@ -100,6 +100,7 @@ export interface BookCopyScanResponse {
 export interface BookCopySummary {
   copyId: string;
   ssnNumber: string;
+  bookSsnNumber: string;
   title: string;
   accessionNumber: string;
   qrCodeValue: string;

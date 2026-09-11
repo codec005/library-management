@@ -3,8 +3,9 @@
 Bulk-seed MariaDB for the college library management app.
 
 Creates:
-  - N catalog books with unique titles
-  - 1..max_copies physical copies per book (same title, distinct copy SSNs)
+  - N catalog book rows with UNIQUE SSNs (BOOK-00000001, …)
+  - Shared display titles so several SSNs can share one name (for UI title-grouping tests)
+  - 1..max_copies physical copies per catalog SSN
   - M users across STUDENT / FACULTY / LIBRARIAN / ADMIN
   - password hash for plaintext "user" on every account (BCrypt, Spring-compatible)
 
@@ -14,6 +15,8 @@ Schema matches Hibernate tables:
 Usage:
   python3 -m venv .venv && source .venv/bin/activate
   pip install -r requirements-seed.txt
+  # Quick grouping test: 40 catalog rows, ~4 SSNs per title
+  python seed_bulk_data.py --books 40 --users 20 --editions-per-title 4 --max-copies 3
   python seed_bulk_data.py --books 100000 --users 100000 --max-copies 10
 
 Defaults connect to:
@@ -40,6 +43,14 @@ from pymysql.connections import Connection
 
 PASSWORD_PLAINTEXT = "user"
 BATCH_SIZE = 2000
+
+# Fixed titles inserted first so Available Books / Full Catalogue grouping is easy to search.
+TEST_SHARED_TITLES = (
+    "Chemistry Fundamentals",
+    "Introduction to Algorithms",
+    "Digital Circuits",
+    "Engineering Mechanics",
+)
 
 CATEGORIES = (
     "Computer Science",
@@ -155,20 +166,20 @@ def role_counts(total: int) -> dict[str, int]:
     return dict(zip(ROLES, counts))
 
 
-def unique_title(index: int, used: set[str]) -> str:
-    # Deterministic uniqueness for 100k+ titles
-    base = (
-        f"{TITLE_ADJECTIVES[index % len(TITLE_ADJECTIVES)]} "
-        f"{TITLE_NOUNS[(index // len(TITLE_ADJECTIVES)) % len(TITLE_NOUNS)]} "
-        f"Vol {index}"
+def shared_title(index: int, editions_per_title: int) -> str:
+    """
+    Same display title for editions_per_title consecutive catalog rows.
+    SSNs stay unique (BOOK-00000001, BOOK-00000002, …).
+    First blocks use TEST_SHARED_TITLES for easy UI search.
+    """
+    group = (index - 1) // max(1, editions_per_title)
+    if group < len(TEST_SHARED_TITLES):
+        return TEST_SHARED_TITLES[group]
+    pool_index = group - len(TEST_SHARED_TITLES)
+    return (
+        f"{TITLE_ADJECTIVES[pool_index % len(TITLE_ADJECTIVES)]} "
+        f"{TITLE_NOUNS[(pool_index // len(TITLE_ADJECTIVES)) % len(TITLE_NOUNS)]}"
     )
-    title = base
-    suffix = 0
-    while title in used:
-        suffix += 1
-        title = f"{base} ({suffix})"
-    used.add(title)
-    return title
 
 
 def copy_count_for_book(max_copies: int) -> int:
@@ -188,25 +199,37 @@ def copy_count_for_book(max_copies: int) -> int:
     return random.randint(1, max_copies)
 
 
-def seed_books(conn: Connection, book_count: int, max_copies: int, batch_size: int) -> int:
-    used_titles: set[str] = set()
+def seed_books(
+    conn: Connection,
+    book_count: int,
+    max_copies: int,
+    batch_size: int,
+    editions_per_title: int,
+) -> int:
     now = utc_now()
     total_copies = 0
     book_rows: list[tuple] = []
     copy_rows: list[tuple] = []
+    title_counts: dict[str, int] = {}
 
     cur = conn.cursor()
-    print(f"Seeding {book_count:,} books (max {max_copies} copies each)...")
+    print(
+        f"Seeding {book_count:,} catalog rows "
+        f"(unique SSNs, ~{editions_per_title} editions per shared title, "
+        f"max {max_copies} copies each)..."
+    )
 
     for i in range(1, book_count + 1):
         base_ssn = f"BOOK-{i:08d}"
-        title = unique_title(i, used_titles)
-        author = AUTHORS[i % len(AUTHORS)]
-        publisher = PUBLISHERS[i % len(PUBLISHERS)]
-        category = CATEGORIES[i % len(CATEGORIES)]
-        fine_per_day = 5 + (i % 10)
+        title = shared_title(i, editions_per_title)
+        # Vary metadata within the same title so the detail window shows differences
+        author = AUTHORS[(i - 1) % len(AUTHORS)]
+        publisher = PUBLISHERS[(i - 1) % len(PUBLISHERS)]
+        category = CATEGORIES[(i - 1) % len(CATEGORIES)]
+        fine_per_day = 5 + ((i - 1) % 10)
         loan_period_days = 7 if i % 3 else 14
         n_copies = copy_count_for_book(max_copies)
+        title_counts[title] = title_counts.get(title, 0) + 1
 
         book_rows.append(
             (base_ssn, title, author, publisher, category, fine_per_day, loan_period_days)
@@ -243,7 +266,16 @@ def seed_books(conn: Connection, book_count: int, max_copies: int, batch_size: i
         _flush_books(cur, book_rows, copy_rows)
         conn.commit()
 
-    print(f"Books done: {book_count:,} titles, {total_copies:,} copies")
+    multi = sorted(
+        ((title, count) for title, count in title_counts.items() if count > 1),
+        key=lambda item: (-item[1], item[0]),
+    )
+    print(f"Books done: {book_count:,} catalog SSNs, {total_copies:,} copies")
+    print(f"  distinct titles = {len(title_counts):,}")
+    if multi:
+        print("  sample shared titles (for grouping tests):")
+        for title, count in multi[:8]:
+            print(f"    {count}x  {title}")
     return total_copies
 
 
@@ -379,13 +411,19 @@ def _flush_users(
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Bulk seed library MariaDB with books and users")
-    p.add_argument("--books", type=int, default=100_000, help="Number of catalog titles")
-    p.add_argument("--users", type=int, default=100_000, help="Number of user accounts")
+    p.add_argument("--books", type=int, default=200, help="Number of catalog book rows (unique SSNs)")
+    p.add_argument("--users", type=int, default=200, help="Number of user accounts")
+    p.add_argument(
+        "--editions-per-title",
+        type=int,
+        default=4,
+        help="How many different SSNs share each display title (for grouping UI). Default 4.",
+    )
     p.add_argument(
         "--max-copies",
         type=int,
         default=10,
-        help="Max copies per book title (cap 1000). Default 10 to avoid huge tables.",
+        help="Max physical copies per catalog SSN (cap 1000). Default 10 to avoid huge tables.",
     )
     p.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     p.add_argument("--host", default="127.0.0.1")
@@ -415,6 +453,9 @@ def main() -> int:
     if not 1 <= args.max_copies <= 1000:
         print("--max-copies must be between 1 and 1000", file=sys.stderr)
         return 2
+    if args.editions_per_title < 1:
+        print("--editions-per-title must be >= 1", file=sys.stderr)
+        return 2
 
     random.seed(args.seed)
     t0 = time.time()
@@ -433,7 +474,13 @@ def main() -> int:
         conn.commit()
 
         if not args.skip_books and args.books > 0:
-            seed_books(conn, args.books, args.max_copies, args.batch_size)
+            seed_books(
+                conn,
+                args.books,
+                args.max_copies,
+                args.batch_size,
+                args.editions_per_title,
+            )
         if not args.skip_users and args.users > 0:
             seed_users(conn, args.users, password_hash, args.batch_size)
 
@@ -450,6 +497,17 @@ def main() -> int:
                 "SELECT roles, COUNT(*) FROM user_account_roles GROUP BY roles ORDER BY roles"
             )
             role_rows = cur.fetchall()
+            cur.execute(
+                """
+                SELECT title, COUNT(*) AS editions
+                FROM books
+                GROUP BY title
+                HAVING editions > 1
+                ORDER BY editions DESC, title
+                LIMIT 5
+                """
+            )
+            shared_titles = cur.fetchall()
         conn.commit()
 
         print("\nFinal counts:")
@@ -458,6 +516,11 @@ def main() -> int:
         print(f"  users        = {users:,}")
         for role, n in role_rows:
             print(f"  role {role:12s} = {n:,}")
+        if shared_titles:
+            print("\nDB check — titles with multiple SSNs:")
+            for title, editions in shared_titles:
+                print(f"  {editions}x  {title}")
+            print("Search eg. 'Chemistry Fundamentals' in Available Books / Full Catalogue.")
         print(f"\nElapsed: {time.time() - t0:.1f}s")
         print("Login example: roll STU000001 / password user")
     except Exception:

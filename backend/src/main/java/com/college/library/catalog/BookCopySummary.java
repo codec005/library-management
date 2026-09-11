@@ -5,6 +5,7 @@ import java.util.UUID;
 public record BookCopySummary(
     UUID copyId,
     String ssnNumber,
+    String bookSsnNumber,
     String title,
     String accessionNumber,
     String qrCodeValue,
@@ -15,6 +16,7 @@ public record BookCopySummary(
         return new BookCopySummary(
             copy.getId(),
             copy.getSsnNumber(),
+            copy.getBook().getSsnNumber(),
             copy.getBook().getTitle(),
             copy.getAccessionNumber(),
             copy.getQrCodeValue(),
