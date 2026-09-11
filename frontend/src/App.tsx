@@ -290,6 +290,8 @@ export default function App() {
       .catch(() => setBookCategories([]));
   }, []);
 
+  const AVAILABLE_BOOKS_PREVIEW_SIZE = 4;
+
   async function refreshAvailableBooks(
     searchQuery = query,
     filters?: { category?: string; author?: string; publisher?: string }
@@ -301,9 +303,9 @@ export default function App() {
         author: filters?.author ?? availableAuthor,
         publisher: filters?.publisher ?? availablePublisher,
         page: 0,
-        size: 4
+        size: AVAILABLE_BOOKS_PREVIEW_SIZE
       });
-      setBooks(result.content);
+      setBooks(result.content.slice(0, AVAILABLE_BOOKS_PREVIEW_SIZE));
       setAvailableTotalElements(result.totalElements);
     } catch {
       setBooks([]);
@@ -1475,7 +1477,7 @@ export default function App() {
             <BookOpen size={22} />
             <div>
               <h2>Available Books</h2>
-              <p>Filter by category/author/publisher, then search within those filters.</p>
+              <p>Shows up to 4 matches. Open Full Catalogue for 10/20/50 per page.</p>
             </div>
           </div>
 

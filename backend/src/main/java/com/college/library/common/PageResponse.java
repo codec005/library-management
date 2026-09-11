@@ -36,9 +36,9 @@ public record PageResponse<T>(
     }
 
     private static int sanitizeSize(int size) {
-        if (size == 4 || size == 20 || size == 50) {
-            return size;
+        if (size < 1) {
+            return 10;
         }
-        return 10;
+        return Math.min(size, 100);
     }
 }
