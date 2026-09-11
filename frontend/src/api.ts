@@ -16,6 +16,7 @@ export interface UserSummary {
   department: string;
   roles: UserRole[];
   active: boolean;
+  rollNumber?: string | null;
 }
 
 export interface UserIdentifierSummary {
@@ -34,6 +35,15 @@ export interface UserRegistrationRequest {
   rollNumber: string;
   collegeEmail?: string;
   password: string;
+  role: "STUDENT" | "FACULTY" | "LIBRARIAN" | "ADMIN";
+}
+
+export interface UserUpdateRequest {
+  fullName: string;
+  department: string;
+  rollNumber: string;
+  collegeEmail?: string;
+  password?: string;
   role: "STUDENT" | "FACULTY" | "LIBRARIAN" | "ADMIN";
 }
 
@@ -182,6 +192,14 @@ export function registerStudentAsGuest(payload: UserRegistrationRequest) { // cu
 export function registerUser(payload: UserRegistrationRequest, actorUserId: string) {
   return request<UserSummary>("/api/users", {
     method: "POST",
+    headers: { "X-Actor-User-Id": actorUserId },
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateUser(userId: string, payload: UserUpdateRequest, actorUserId: string) {
+  return request<UserDetailsResponse>(`/api/users/${userId}`, {
+    method: "PUT",
     headers: { "X-Actor-User-Id": actorUserId },
     body: JSON.stringify(payload)
   });

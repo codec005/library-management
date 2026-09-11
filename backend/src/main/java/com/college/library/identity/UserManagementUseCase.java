@@ -9,6 +9,8 @@ public interface UserManagementUseCase {
 
     UserSummary registerUser(UserRegistrationRequest request, UUID actorUserId);
 
+    UserDetailsResponse updateUser(UUID userId, UserUpdateRequest request, UUID actorUserId);
+
     void removeStudent(UUID studentId, UUID actorUserId);
 
     void removeUser(UUID userId, UUID actorUserId);

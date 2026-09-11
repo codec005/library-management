@@ -72,6 +72,72 @@ public class UserManagementService implements UserManagementUseCase {
 
     @Override
     @Transactional
+    public UserDetailsResponse updateUser(UUID userId, UserUpdateRequest request, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+
+        if (!hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only admin can edit users");
+        }
+
+        UserAccount targetUser = userAccountRepository.findById(userId)
+            .filter(UserAccount::isActive)
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        if (targetUser.getRoles().contains(UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Super admin accounts cannot be edited from this screen");
+        }
+
+        if (request.role() != UserRole.STUDENT
+            && request.role() != UserRole.FACULTY
+            && request.role() != UserRole.LIBRARIAN
+            && request.role() != UserRole.ADMIN) {
+            throw new IllegalStateException("Supported roles are student, faculty, librarian, and admin");
+        }
+
+        if (actor.getId().equals(targetUser.getId()) && request.role() != UserRole.ADMIN && request.role() != UserRole.SUPER_ADMIN) {
+            throw new IllegalStateException("Admin cannot remove their own admin role");
+        }
+
+        String rollNumber = cleanValue(request.rollNumber());
+        String collegeEmail = cleanValue(request.collegeEmail());
+        String password = request.password() == null ? "" : request.password().trim();
+
+        updateIdentifier(targetUser, IdentifierType.ROLL_NUMBER, rollNumber, true);
+        updateIdentifier(targetUser, IdentifierType.QR_CREDENTIAL, "USER-QR-" + rollNumber, true);
+
+        if (collegeEmail.isBlank()) {
+            removeIdentifier(targetUser, IdentifierType.COLLEGE_EMAIL);
+        } else {
+            updateIdentifier(targetUser, IdentifierType.COLLEGE_EMAIL, collegeEmail, false);
+        }
+
+        targetUser.updateProfile(cleanValue(request.fullName()), cleanValue(request.department()));
+        targetUser.replaceRoles(Set.of(request.role()));
+
+        if (!password.isBlank()) {
+            userCredentialRepository.findByUser(targetUser)
+                .ifPresentOrElse(
+                    credential -> {
+                        credential.updatePasswordHash(passwordEncoder.encode(password));
+                        userCredentialRepository.save(credential);
+                    },
+                    () -> userCredentialRepository.save(new UserCredential(targetUser, passwordEncoder.encode(password)))
+                );
+        }
+
+        UserAccount savedUser = userAccountRepository.save(targetUser);
+        auditLogger.record(
+            AuditAction.USER_UPDATE,
+            actor.getId(),
+            "UserAccount",
+            savedUser.getId(),
+            request.role().name() + " · " + savedUser.getFullName()
+        );
+        return UserDetailsResponse.from(savedUser);
+    }
+
+    @Override
+    @Transactional
     public void removeStudent(UUID studentId, UUID actorUserId) {
         removeUser(studentId, actorUserId);
     }
@@ -112,10 +178,16 @@ public class UserManagementService implements UserManagementUseCase {
         }
 
         UUID targetUserId = targetUser.getId();
+        String rollNumber = userIdentifierRepository.findByUserAndType(targetUser, IdentifierType.ROLL_NUMBER)
+            .map(UserIdentifier::getValue)
+            .orElse("N/A");
+        String roleLabel = targetUser.getRoles().stream().findFirst().map(Enum::name).orElse("USER");
+        String deletedUserLabel = targetUser.getFullName() + " (" + rollNumber + ") · " + roleLabel;
+
         userCredentialRepository.findByUser(targetUser).ifPresent(userCredentialRepository::delete);
         circulationTransactionRepository.deleteByBorrower(targetUser);
         userAccountRepository.delete(targetUser);
-        auditLogger.record(AuditAction.USER_REMOVE, actor.getId(), "UserAccount", targetUserId, "user deleted");
+        auditLogger.record(AuditAction.USER_REMOVE, actor.getId(), "UserAccount", targetUserId, deletedUserLabel);
     }
 
     @Override
@@ -215,6 +287,37 @@ public class UserManagementService implements UserManagementUseCase {
             .ifPresent(identifier -> {
                 throw new IllegalStateException(type + " already exists");
             });
+    }
+
+    private void ensureIdentifierAvailableForOtherUser(IdentifierType type, String value, UserAccount currentUser) {
+        userIdentifierRepository.findByTypeAndValue(type, value)
+            .ifPresent(identifier -> {
+                if (!identifier.getUser().getId().equals(currentUser.getId())) {
+                    throw new IllegalStateException(type + " already exists");
+                }
+            });
+    }
+
+    private void updateIdentifier(UserAccount user, IdentifierType type, String value, boolean required) {
+        String cleaned = cleanValue(value);
+        if (cleaned.isBlank()) {
+            if (required) {
+                throw new IllegalArgumentException(type + " is required");
+            }
+            removeIdentifier(user, type);
+            return;
+        }
+
+        ensureIdentifierAvailableForOtherUser(type, cleaned, user);
+        userIdentifierRepository.findByUserAndType(user, type)
+            .ifPresentOrElse(
+                identifier -> identifier.updateValue(cleaned),
+                () -> user.addIdentifier(new UserIdentifier(type, cleaned, true))
+            );
+    }
+
+    private void removeIdentifier(UserAccount user, IdentifierType type) {
+        user.getIdentifiers().removeIf(identifier -> identifier.getType() == type);
     }
 
     private String cleanValue(String value) {

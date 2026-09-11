@@ -94,7 +94,9 @@ public class AuditService implements AuditLogger, AuditUseCase {
                 }
                 yield doneBy + " registered " + targetUser + " as " + registeredRole(details);
             }
-            case USER_REMOVE -> doneBy + " deleted user " + targetUser;
+            case USER_REMOVE -> doneBy + " deleted user " + deletedUserLabel(details, targetUser);
+            case USER_UPDATE -> doneBy + " updated user " + targetUser
+                + (details == null ? "" : " (" + registeredRole(details) + ")");
             case USER_QR_GENERATE -> doneBy + " generated QR for " + targetUser;
             case BOOK_ADD -> doneBy + " added book" + (details == null ? "" : " " + details);
             case BOOK_REMOVE -> doneBy + " removed " + (event.getTargetType() == null ? "book" : friendlyTarget(event.getTargetType()))
@@ -137,10 +139,23 @@ public class AuditService implements AuditLogger, AuditUseCase {
             case BOOK_RENEW -> "Book renewed";
             case USER_REGISTER -> "User registered";
             case USER_REMOVE -> "User deleted";
+            case USER_UPDATE -> "User updated";
             case BOOK_ADD -> "Book added";
             case BOOK_REMOVE -> "Book removed";
             case USER_QR_GENERATE -> "User QR generated";
         };
+    }
+
+    private String deletedUserLabel(String details, String targetUser) {
+        if (details != null && !details.isBlank() && !details.equalsIgnoreCase("user deleted")) {
+            return details;
+        }
+
+        if (targetUser != null && !targetUser.equals("Unknown user") && !targetUser.equals("System")) {
+            return targetUser;
+        }
+
+        return "a user account";
     }
 
     private String loginMethodSuffix(String details) {

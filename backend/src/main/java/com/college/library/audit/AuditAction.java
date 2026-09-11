@@ -9,6 +9,7 @@ public enum AuditAction {
     BOOK_RENEW,
     USER_REGISTER,
     USER_REMOVE,
+    USER_UPDATE,
     BOOK_ADD,
     BOOK_REMOVE,
     USER_QR_GENERATE

@@ -8,9 +8,23 @@ public record UserSummary(
     String fullName,
     String department,
     Set<UserRole> roles,
-    boolean active
+    boolean active,
+    String rollNumber
 ) {
     static UserSummary from(UserAccount user) {
-        return new UserSummary(user.getId(), user.getFullName(), user.getDepartment(), user.getRoles(), user.isActive());
+        String rollNumber = user.getIdentifiers().stream()
+            .filter(identifier -> identifier.getType() == IdentifierType.ROLL_NUMBER)
+            .map(UserIdentifier::getValue)
+            .findFirst()
+            .orElse(null);
+
+        return new UserSummary(
+            user.getId(),
+            user.getFullName(),
+            user.getDepartment(),
+            user.getRoles(),
+            user.isActive(),
+            rollNumber
+        );
     }
 }

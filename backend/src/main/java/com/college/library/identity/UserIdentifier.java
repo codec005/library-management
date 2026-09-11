@@ -49,6 +49,10 @@ public class UserIdentifier extends BaseEntity {
         return value;
     }
 
+    public void updateValue(String value) {
+        this.value = value;
+    }
+
     public boolean isVerified() {
         return verified;
     }

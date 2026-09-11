@@ -70,6 +70,16 @@ public class UserAccount extends BaseEntity {
         active = true;
     }
 
+    public void updateProfile(String fullName, String department) {
+        this.fullName = fullName;
+        this.department = department;
+    }
+
+    public void replaceRoles(Set<UserRole> roles) {
+        this.roles.clear();
+        this.roles.addAll(roles);
+    }
+
     public void addIdentifier(UserIdentifier identifier) {
         identifiers.add(identifier);
         identifier.assignTo(this);

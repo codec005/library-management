@@ -15,6 +15,7 @@ import {
   UserDetailsResponse,
   UserRegistrationRequest,
   UserSummary,
+  UserUpdateRequest,
   addBook,
   getStudentDetailsByIdentifier,
   getUserQrCredential,
@@ -34,7 +35,8 @@ import {
   returnBookCopy,
   scanBookCopy,
   scanLogin,
-  searchBooks
+  searchBooks,
+  updateUser
 } from "./api";
 
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
@@ -46,6 +48,7 @@ const AUDIT_ACTION_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "SCAN_LOGIN", label: "Scan login" },
   { value: "USER_REGISTER", label: "User registered" },
   { value: "USER_REMOVE", label: "User deleted" },
+  { value: "USER_UPDATE", label: "User updated" },
   { value: "USER_QR_GENERATE", label: "User QR generated" },
   { value: "BOOK_ADD", label: "Book added" },
   { value: "BOOK_REMOVE", label: "Book removed" },
@@ -97,6 +100,16 @@ export default function App() {
   });
   const [auditToDate, setAuditToDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [auditActionFilter, setAuditActionFilter] = useState("");
+  const [isEditingUser, setIsEditingUser] = useState(false);
+  const [userEditForm, setUserEditForm] = useState<UserUpdateRequest>({
+    fullName: "",
+    department: "",
+    rollNumber: "",
+    collegeEmail: "",
+    password: "",
+    role: "STUDENT"
+  });
+  const [userDirectoryQuery, setUserDirectoryQuery] = useState("");
   const [registrationForm, setRegistrationForm] = useState<UserRegistrationRequest>({
     fullName: "",
     department: "",
@@ -122,7 +135,7 @@ export default function App() {
   const activeRole = useMemo(() => currentUser?.roles[0] ?? "Guest", [currentUser]);
   const loginIdentifierLabel = useMemo(() => {
     const labels: Record<IdentifierType, string> = {
-      ROLL_NUMBER: "Staff Code",
+      ROLL_NUMBER: "Roll Number / Staff Code",
       COLLEGE_EMAIL: "College Email",
       PHONE_NUMBER: "Phone Number",
       QR_CREDENTIAL: "QR Credential",
@@ -149,18 +162,32 @@ export default function App() {
   const staffIssueBookValue = scanValue.trim();
   const isStaffIssueReady = canIssueToStudents && staffIssueStudentValue.length > 0 && staffIssueBookValue.length > 0;
   const visibleManagedUsers = useMemo(
-    () => users.filter((user) => {
-      if (canManageLibrarians) {
-        return true;
+    () => {
+      const roleFiltered = users.filter((user) => {
+        if (canManageLibrarians) {
+          return true;
+        }
+
+        if (isFaculty) {
+          return user.roles.includes("STUDENT") || user.roles.includes("LIBRARIAN");
+        }
+
+        return user.roles.includes("STUDENT");
+      });
+
+      const query = userDirectoryQuery.trim().toLowerCase();
+      if (!query) {
+        return roleFiltered;
       }
 
-      if (isFaculty) {
-        return user.roles.includes("STUDENT") || user.roles.includes("LIBRARIAN");
-      }
-
-      return user.roles.includes("STUDENT");
-    }),
-    [canManageLibrarians, isFaculty, users]
+      return roleFiltered.filter((user) => {
+        const nameMatch = user.fullName.toLowerCase().includes(query);
+        const departmentMatch = user.department.toLowerCase().includes(query);
+        const codeMatch = (user.rollNumber ?? "").toLowerCase().includes(query);
+        return nameMatch || departmentMatch || codeMatch;
+      });
+    },
+    [canManageLibrarians, isFaculty, userDirectoryQuery, users]
   );
   const visibleCatalogBooks = useMemo(() => books.slice(0, 4), [books]);
   const myTotalFine = useMemo(
@@ -338,6 +365,10 @@ export default function App() {
     }
 
     return type.replace(/_/g, " ");
+  }
+
+  function codeLabelForRole(role: string) {
+    return role === "STUDENT" ? "Roll Number" : "Staff Code";
   }
 
   function canViewListedUser(user: UserSummary) {
@@ -616,12 +647,65 @@ export default function App() {
       setSelectedUserDetails(details);
       setSelectedUserIssuedBooks([]);
       setIsIssuedBooksWindowOpen(false);
+      setIsEditingUser(false);
       setMessage(`Showing details for ${details.fullName}.`);
     } catch (error) {
       setSelectedUserDetails(null);
       setSelectedUserIssuedBooks([]);
       setIsIssuedBooksWindowOpen(false);
+      setIsEditingUser(false);
       setMessage(error instanceof Error ? error.message : "Unable to load user details.");
+    }
+  }
+
+  function handleStartEditUser() {
+    if (!selectedUserDetails || !canManageLibrarians) {
+      setMessage("Only admin can edit users.");
+      return;
+    }
+
+    if (selectedUserDetails.roles.includes("SUPER_ADMIN")) {
+      setMessage("Super admin accounts cannot be edited from this screen.");
+      return;
+    }
+
+    const editableRole = selectedUserDetails.roles.find((role) =>
+      role === "STUDENT" || role === "FACULTY" || role === "LIBRARIAN" || role === "ADMIN"
+    ) ?? "STUDENT";
+
+    setUserEditForm({
+      fullName: selectedUserDetails.fullName,
+      department: selectedUserDetails.department,
+      rollNumber: selectedUserDetails.identifiers.find((item) => item.type === "ROLL_NUMBER")?.value ?? "",
+      collegeEmail: selectedUserDetails.identifiers.find((item) => item.type === "COLLEGE_EMAIL")?.value ?? "",
+      password: "",
+      role: editableRole
+    });
+    setIsEditingUser(true);
+  }
+
+  async function handleUpdateUser(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!currentUser || !selectedUserDetails || !canManageLibrarians) {
+      setMessage("Only admin can edit users.");
+      return;
+    }
+
+    try {
+      const payload: UserUpdateRequest = {
+        ...userEditForm,
+        collegeEmail: userEditForm.collegeEmail?.trim() ? userEditForm.collegeEmail.trim() : undefined,
+        password: userEditForm.password?.trim() ? userEditForm.password.trim() : undefined
+      };
+      const updated = await updateUser(selectedUserDetails.id, payload, currentUser.userId);
+      setSelectedUserDetails(updated);
+      setUsers(await listUsers());
+      setIsEditingUser(false);
+      setUserEditForm((current) => ({ ...current, password: "" }));
+      setMessage(`${updated.fullName} details updated.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "User update failed.");
     }
   }
 
@@ -811,6 +895,8 @@ export default function App() {
     setIsUserDirectoryOpen(false);
     setSelectedUserDetails(null);
     setSelectedUserIssuedBooks([]);
+    setIsEditingUser(false);
+    setUserDirectoryQuery("");
     setGeneratedQr(null);
     setIsIssuedBooksWindowOpen(false);
   }
@@ -1187,7 +1273,7 @@ export default function App() {
               onChange={(event) => setRegistrationForm({ ...registrationForm, department: event.target.value })}
             />
             <input
-              placeholder="Roll number / staff code"
+              placeholder={codeLabelForRole(registrationForm.role)}
               value={registrationForm.rollNumber}
               onChange={(event) => setRegistrationForm({ ...registrationForm, rollNumber: event.target.value })}
             />
@@ -1524,14 +1610,32 @@ export default function App() {
             <div className="modal-content-grid">
               <div className="user-list">
                 <h3>{canManageLibrarians ? "Registered Users" : isFaculty ? "Students And Librarians" : "Students"}</h3>
+                <form
+                  className="inline-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                  }}
+                >
+                  <Search size={18} />
+                  <input
+                    placeholder="Search by name, roll number, or staff code"
+                    value={userDirectoryQuery}
+                    onChange={(event) => setUserDirectoryQuery(event.target.value)}
+                  />
+                </form>
                 {visibleManagedUsers.length === 0 ? (
-                  <p>{canManageLibrarians ? "No registered users found." : "No users found."}</p>
+                  <p>{userDirectoryQuery.trim() ? "No users match this search." : canManageLibrarians ? "No registered users found." : "No users found."}</p>
                 ) : (
                   visibleManagedUsers.map((user) => (
                     <div className="compact-row" key={user.id}>
                       <div>
                         <strong>{user.fullName}</strong>
-                        <span>{user.roles.join(", ")} · {user.department}</span>
+                        <span>
+                          {user.roles.join(", ")} · {user.department}
+                          {user.rollNumber
+                            ? ` · ${codeLabelForRole(user.roles.includes("STUDENT") ? "STUDENT" : "STAFF")}: ${user.rollNumber}`
+                            : ""}
+                        </span>
                       </div>
                       <div className="compact-actions">
                         {canViewListedUser(user) && (
@@ -1562,27 +1666,110 @@ export default function App() {
                 {selectedUserDetails ? (
                   <div className="student-detail-card">
                     <h3>{selectedUserDetails.fullName}</h3>
-                    <dl className="details-list">
-                      <div>
-                        <dt>Department</dt>
-                        <dd>{selectedUserDetails.department}</dd>
-                      </div>
-                      <div>
-                        <dt>Role</dt>
-                        <dd>{selectedUserDetails.roles.join(", ")}</dd>
-                      </div>
-                      {selectedUserDetails.identifiers.filter((identifierItem) => identifierItem.type === "ROLL_NUMBER").map((identifierItem) => (
-                        <div key={`${identifierItem.type}-${identifierItem.value}`}>
-                          <dt>{formatIdentifierLabel(identifierItem.type, selectedUserDetails.roles)}</dt>
-                          <dd>{identifierItem.value}</dd>
+                    {isEditingUser && canManageLibrarians ? (
+                      <form className="management-form" onSubmit={handleUpdateUser}>
+                        <label>
+                          Full name
+                          <input
+                            required
+                            value={userEditForm.fullName}
+                            onChange={(event) => setUserEditForm({ ...userEditForm, fullName: event.target.value })}
+                          />
+                        </label>
+                        <label>
+                          Department
+                          <input
+                            required
+                            value={userEditForm.department}
+                            onChange={(event) => setUserEditForm({ ...userEditForm, department: event.target.value })}
+                          />
+                        </label>
+                        <label>
+                          {codeLabelForRole(userEditForm.role)}
+                          <input
+                            required
+                            value={userEditForm.rollNumber}
+                            onChange={(event) => setUserEditForm({ ...userEditForm, rollNumber: event.target.value })}
+                          />
+                        </label>
+                        <label>
+                          College email optional
+                          <input
+                            value={userEditForm.collegeEmail ?? ""}
+                            onChange={(event) => setUserEditForm({ ...userEditForm, collegeEmail: event.target.value })}
+                          />
+                        </label>
+                        <label>
+                          New password optional
+                          <input
+                            type="password"
+                            placeholder="Leave blank to keep current password"
+                            value={userEditForm.password ?? ""}
+                            onChange={(event) => setUserEditForm({ ...userEditForm, password: event.target.value })}
+                          />
+                        </label>
+                        <label>
+                          Role
+                          <select
+                            value={userEditForm.role}
+                            onChange={(event) =>
+                              setUserEditForm({
+                                ...userEditForm,
+                                role: event.target.value as UserUpdateRequest["role"]
+                              })
+                            }
+                          >
+                            <option value="STUDENT">Student</option>
+                            <option value="FACULTY">Faculty</option>
+                            <option value="LIBRARIAN">Librarian</option>
+                            <option value="ADMIN">Admin</option>
+                          </select>
+                        </label>
+                        <div className="action-row">
+                          <button type="submit">Save Changes</button>
+                          <button type="button" className="secondary-button" onClick={() => setIsEditingUser(false)}>
+                            Cancel
+                          </button>
                         </div>
-                      ))}
-                    </dl>
+                      </form>
+                    ) : (
+                      <>
+                        <dl className="details-list">
+                          <div>
+                            <dt>Department</dt>
+                            <dd>{selectedUserDetails.department}</dd>
+                          </div>
+                          <div>
+                            <dt>Role</dt>
+                            <dd>{selectedUserDetails.roles.join(", ")}</dd>
+                          </div>
+                          {selectedUserDetails.identifiers.filter((identifierItem) => identifierItem.type === "ROLL_NUMBER").map((identifierItem) => (
+                            <div key={`${identifierItem.type}-${identifierItem.value}`}>
+                              <dt>{formatIdentifierLabel(identifierItem.type, selectedUserDetails.roles)}</dt>
+                              <dd>{identifierItem.value}</dd>
+                            </div>
+                          ))}
+                          {selectedUserDetails.identifiers.filter((identifierItem) => identifierItem.type === "COLLEGE_EMAIL").map((identifierItem) => (
+                            <div key={`${identifierItem.type}-${identifierItem.value}`}>
+                              <dt>College Email</dt>
+                              <dd>{identifierItem.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
 
-                    {canViewIssuedBooksFor(selectedUserDetails) && (
-                      <button type="button" className="secondary-button view-issued-button" onClick={() => void handleOpenIssuedBooks()}>
-                        View Issued Books
-                      </button>
+                        <div className="action-row">
+                          {canManageLibrarians && !selectedUserDetails.roles.includes("SUPER_ADMIN") && (
+                            <button type="button" onClick={handleStartEditUser}>
+                              Edit User
+                            </button>
+                          )}
+                          {canViewIssuedBooksFor(selectedUserDetails) && (
+                            <button type="button" className="secondary-button view-issued-button" onClick={() => void handleOpenIssuedBooks()}>
+                              View Issued Books
+                            </button>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 ) : (
