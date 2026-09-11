@@ -209,7 +209,49 @@ export default function App() {
     },
     [canManageLibrarians, isFaculty, userDirectoryQuery, users]
   );
-  const visibleCatalogBooks = useMemo(() => books.slice(0, 4), [books]);
+  const availableCatalogBooks = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        title: string;
+        authors: string[];
+        categories: string[];
+        availableCopies: number;
+        totalCopies: number;
+      }
+    >();
+
+    for (const book of books) {
+      if (book.availableCopies <= 0) {
+        continue;
+      }
+
+      const key = book.title.trim().toLowerCase();
+      const existing = grouped.get(key);
+      if (!existing) {
+        grouped.set(key, {
+          title: book.title.trim(),
+          authors: book.author ? [book.author] : [],
+          categories: book.category ? [book.category] : [],
+          availableCopies: book.availableCopies,
+          totalCopies: book.totalCopies
+        });
+        continue;
+      }
+
+      existing.availableCopies += book.availableCopies;
+      existing.totalCopies += book.totalCopies;
+      if (book.author && !existing.authors.some((author) => author.toLowerCase() === book.author.toLowerCase())) {
+        existing.authors.push(book.author);
+      }
+      if (book.category && !existing.categories.some((category) => category.toLowerCase() === book.category.toLowerCase())) {
+        existing.categories.push(book.category);
+      }
+    }
+
+    return Array.from(grouped.values()).sort((left, right) => left.title.localeCompare(right.title));
+  }, [books]);
+  const visibleCatalogBooks = useMemo(() => availableCatalogBooks.slice(0, 4), [availableCatalogBooks]);
   const myTotalFine = useMemo(
     () => myIssuedBooks.reduce((total, book) => total + book.fineAmount, 0),
     [myIssuedBooks]
@@ -1264,23 +1306,27 @@ export default function App() {
           </form>
 
           <div className="book-list">
-            {visibleCatalogBooks.map((book) => (
-              <div className="book-row" key={book.ssnNumber}>
-                <div>
-                  <strong>{book.title}</strong>
-                  <span>
-                    SSN {book.ssnNumber} · {book.author} · {book.category}
-                  </span>
+            {visibleCatalogBooks.length === 0 ? (
+              <div className="empty-state">No available copies match your search.</div>
+            ) : (
+              visibleCatalogBooks.map((book) => (
+                <div className="book-row" key={book.title.toLowerCase()}>
+                  <div>
+                    <strong>{book.title}</strong>
+                    <span>
+                      {[book.authors.join(" / "), book.categories.join(" / ")].filter(Boolean).join(" · ")}
+                    </span>
+                  </div>
+                  <div className="book-actions">
+                    <span className="availability">{book.availableCopies}/{book.totalCopies} available</span>
+                  </div>
                 </div>
-                <div className="book-actions">
-                  <span className="availability">{book.availableCopies}/{book.totalCopies} available</span>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
-          {books.length > 4 && (
-            <p className="list-note">Showing first 4 of {books.length} books.</p>
+          {availableCatalogBooks.length > 4 && (
+            <p className="list-note">Showing first 4 of {availableCatalogBooks.length} available books.</p>
           )}
 
           <button type="button" className="secondary-button directory-button" onClick={() => void handleOpenCatalogWindow()}>
