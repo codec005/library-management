@@ -93,6 +93,7 @@ export default function App() {
   const [generatedBookQrs, setGeneratedBookQrs] = useState<Array<BookCopySummary & { dataUrl: string }>>([]);
   const [isAuditLogsOpen, setIsAuditLogsOpen] = useState(false);
   const [auditEvents, setAuditEvents] = useState<AuditEventResponse[]>([]);
+  const [auditLogsLoaded, setAuditLogsLoaded] = useState(false);
   const [auditFromDate, setAuditFromDate] = useState(() => {
     const date = new Date();
     date.setDate(date.getDate() - 7);
@@ -847,18 +848,15 @@ export default function App() {
     }
   }
 
-  async function handleOpenAuditLogs() {
+  function handleOpenAuditLogs() {
     if (!currentUser) {
       setMessage("Sign in as admin to view audit logs.");
       return;
     }
 
-    try {
-      setAuditEvents(await listAuditEvents(currentUser.userId, auditFromDate, auditToDate, auditActionFilter || undefined));
-      setIsAuditLogsOpen(true);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to load audit logs.");
-    }
+    setAuditEvents([]);
+    setAuditLogsLoaded(false);
+    setIsAuditLogsOpen(true);
   }
 
   async function handleFilterAuditLogs(event: React.FormEvent<HTMLFormElement>) {
@@ -876,9 +874,17 @@ export default function App() {
 
     try {
       setAuditEvents(await listAuditEvents(currentUser.userId, auditFromDate, auditToDate, auditActionFilter || undefined));
+      setAuditLogsLoaded(true);
     } catch (error) {
+      setAuditLogsLoaded(false);
       setMessage(error instanceof Error ? error.message : "Failed to load audit logs.");
     }
+  }
+
+  function handleCloseAuditLogs() {
+    setIsAuditLogsOpen(false);
+    setAuditEvents([]);
+    setAuditLogsLoaded(false);
   }
 
   function handleLogout() {
@@ -1308,7 +1314,7 @@ export default function App() {
             </button>
           )}
           {canManageLibrarians && (
-            <button type="button" className="secondary-button directory-button" onClick={() => void handleOpenAuditLogs()}>
+            <button type="button" className="secondary-button directory-button" onClick={handleOpenAuditLogs}>
               Open Audit Logs
             </button>
           )}
@@ -1872,7 +1878,7 @@ export default function App() {
           aria-label="Audit logs"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
-              setIsAuditLogsOpen(false);
+              handleCloseAuditLogs();
             }
           }}
         >
@@ -1880,9 +1886,9 @@ export default function App() {
             <div className="modal-header">
               <div>
                 <h2>Audit Logs</h2>
-                <p>Choose a date range to review system activity.</p>
+                <p>Set filters, then click Show Logs to view matching activity.</p>
               </div>
-              <button type="button" className="secondary-button" onClick={() => setIsAuditLogsOpen(false)}>
+              <button type="button" className="secondary-button" onClick={handleCloseAuditLogs}>
                 Close
               </button>
             </div>
@@ -1918,7 +1924,9 @@ export default function App() {
             </form>
 
             <div className="issued-list">
-              {auditEvents.length === 0 ? (
+              {!auditLogsLoaded ? (
+                <p>Choose From, To, and Type, then click Show Logs.</p>
+              ) : auditEvents.length === 0 ? (
                 <p>No audit events found for this filter.</p>
               ) : (
                 auditEvents.map((event) => (

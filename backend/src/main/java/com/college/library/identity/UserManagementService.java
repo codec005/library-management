@@ -45,7 +45,14 @@ public class UserManagementService implements UserManagementUseCase {
         }
 
         UserAccount student = createUser(request);
-        auditLogger.record(AuditAction.USER_REGISTER, null, "UserAccount", student.getId(), "guest student registration");
+        String rollNumber = request.rollNumber().trim();
+        auditLogger.record(
+            AuditAction.USER_REGISTER,
+            null,
+            "UserAccount",
+            student.getId(),
+            student.getFullName() + " (" + rollNumber + ") · STUDENT · guest registration"
+        );
         return UserSummary.from(student);
     }
 
@@ -66,7 +73,13 @@ public class UserManagementService implements UserManagementUseCase {
         }
 
         UserAccount user = createUser(request);
-        auditLogger.record(AuditAction.USER_REGISTER, actor.getId(), "UserAccount", user.getId(), request.role().name() + " · " + user.getFullName());
+        auditLogger.record(
+            AuditAction.USER_REGISTER,
+            actor.getId(),
+            "UserAccount",
+            user.getId(),
+            user.getFullName() + " (" + request.rollNumber().trim() + ") · " + request.role().name()
+        );
         return UserSummary.from(user);
     }
 
@@ -131,7 +144,7 @@ public class UserManagementService implements UserManagementUseCase {
             actor.getId(),
             "UserAccount",
             savedUser.getId(),
-            request.role().name() + " · " + savedUser.getFullName()
+            savedUser.getFullName() + " (" + rollNumber + ") · " + request.role().name()
         );
         return UserDetailsResponse.from(savedUser);
     }
@@ -207,8 +220,21 @@ public class UserManagementService implements UserManagementUseCase {
             .orElseGet(() -> createQrCredential(user))
             .getValue();
 
-        auditLogger.record(AuditAction.USER_QR_GENERATE, actor.getId(), "UserAccount", user.getId(), "QR credential requested");
+        auditLogger.record(
+            AuditAction.USER_QR_GENERATE,
+            actor.getId(),
+            "UserAccount",
+            user.getId(),
+            userLabel(user) + " · QR credential requested"
+        );
         return new UserQrCredentialResponse(user.getId(), user.getFullName(), qrCredential);
+    }
+
+    private String userLabel(UserAccount user) {
+        String rollNumber = userIdentifierRepository.findByUserAndType(user, IdentifierType.ROLL_NUMBER)
+            .map(UserIdentifier::getValue)
+            .orElse("N/A");
+        return user.getFullName() + " (" + rollNumber + ")";
     }
 
     @Override

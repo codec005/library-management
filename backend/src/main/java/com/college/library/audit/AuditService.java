@@ -89,15 +89,16 @@ public class AuditService implements AuditLogger, AuditUseCase {
             case SCAN_LOGIN -> doneBy + " logged in by scan"
                 + loginMethodSuffix(details);
             case USER_REGISTER -> {
+                String registeredUser = rememberedUserLabel(details, targetUser);
                 if (details != null && details.toLowerCase().contains("guest")) {
-                    yield targetUser + " self-registered as student";
+                    yield registeredUser + " self-registered as student";
                 }
-                yield doneBy + " registered " + targetUser + " as " + registeredRole(details);
+                yield doneBy + " registered " + registeredUser + " as " + registeredRole(details);
             }
-            case USER_REMOVE -> doneBy + " deleted user " + deletedUserLabel(details, targetUser);
-            case USER_UPDATE -> doneBy + " updated user " + targetUser
+            case USER_REMOVE -> doneBy + " deleted user " + rememberedUserLabel(details, targetUser);
+            case USER_UPDATE -> doneBy + " updated user " + rememberedUserLabel(details, targetUser)
                 + (details == null ? "" : " (" + registeredRole(details) + ")");
-            case USER_QR_GENERATE -> doneBy + " generated QR for " + targetUser;
+            case USER_QR_GENERATE -> doneBy + " generated QR for " + rememberedUserLabel(details, targetUser);
             case BOOK_ADD -> doneBy + " added book" + (details == null ? "" : " " + details);
             case BOOK_REMOVE -> doneBy + " removed " + (event.getTargetType() == null ? "book" : friendlyTarget(event.getTargetType()))
                 + (details == null ? "" : " " + details);
@@ -146,16 +147,51 @@ public class AuditService implements AuditLogger, AuditUseCase {
         };
     }
 
-    private String deletedUserLabel(String details, String targetUser) {
-        if (details != null && !details.isBlank() && !details.equalsIgnoreCase("user deleted")) {
-            return details;
-        }
-
+    private String rememberedUserLabel(String details, String targetUser) {
         if (targetUser != null && !targetUser.equals("Unknown user") && !targetUser.equals("System")) {
             return targetUser;
         }
 
-        return "a user account";
+        if (details == null || details.isBlank()) {
+            return "a user account";
+        }
+
+        String[] parts = details.split("·");
+        if (parts.length >= 2) {
+            String first = parts[0].trim();
+            String second = parts[1].trim();
+
+            // Older format: "STUDENT · Full Name"
+            if (first.matches("^[A-Z_]+$")) {
+                return second;
+            }
+
+            // Newer format: "Full Name (ROLL) · ROLE"
+            return first;
+        }
+
+        if (details.toLowerCase().contains("guest")) {
+            return "a guest student";
+        }
+
+        return details;
+    }
+
+    private String registeredRole(String details) {
+        if (details == null || details.isBlank()) {
+            return "user";
+        }
+
+        String[] parts = details.split("·");
+        String rolePart = parts[0].trim();
+        if (parts.length >= 2 && !rolePart.matches("^[A-Z_]+$")) {
+            rolePart = parts[parts.length - 1].trim();
+            if (rolePart.equalsIgnoreCase("guest registration")) {
+                rolePart = parts.length >= 2 ? parts[parts.length - 2].trim() : "STUDENT";
+            }
+        }
+
+        return rolePart.toLowerCase().replace('_', ' ');
     }
 
     private String loginMethodSuffix(String details) {
@@ -166,15 +202,6 @@ public class AuditService implements AuditLogger, AuditUseCase {
         String[] parts = details.split("·");
         String methodPart = parts[parts.length - 1].trim();
         return " using " + friendlyIdentifier(methodPart);
-    }
-
-    private String registeredRole(String details) {
-        if (details == null || details.isBlank()) {
-            return "user";
-        }
-
-        String rolePart = details.split("·")[0].trim();
-        return rolePart.toLowerCase().replace('_', ' ');
     }
 
     private String friendlyIdentifier(String value) {
