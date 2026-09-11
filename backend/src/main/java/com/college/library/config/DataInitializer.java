@@ -9,7 +9,6 @@ import com.college.library.identity.UserAccountRepository;
 import com.college.library.identity.UserCredential;
 import com.college.library.identity.UserCredentialRepository;
 import com.college.library.identity.UserIdentifier;
-import com.college.library.identity.UserIdentifierRepository;
 import com.college.library.identity.UserRole;
 import java.util.Set;
 import org.springframework.boot.CommandLineRunner;
@@ -26,12 +25,11 @@ public class DataInitializer {
     CommandLineRunner seedData(
         UserAccountRepository userAccountRepository,
         UserCredentialRepository userCredentialRepository,
-        UserIdentifierRepository userIdentifierRepository,
         BookRepository bookRepository,
         PasswordEncoder passwordEncoder
     ) {
         return args -> {
-            ensureDefaultAdmin(userAccountRepository, userCredentialRepository, userIdentifierRepository, passwordEncoder);
+            ensureDefaultAdmin(userAccountRepository, userCredentialRepository, passwordEncoder);
 
             if (bookRepository.count() == 0) {
                 Book cleanCode = new Book("9780132350884", "Clean Code", "Robert C. Martin", "Prentice Hall", "Software Engineering", 10, 14);
@@ -49,32 +47,18 @@ public class DataInitializer {
     private void ensureDefaultAdmin(
         UserAccountRepository userAccountRepository,
         UserCredentialRepository userCredentialRepository,
-        UserIdentifierRepository userIdentifierRepository,
         PasswordEncoder passwordEncoder
     ) {
-        UserAccount admin = userIdentifierRepository.findWithUserByTypeAndValue(IdentifierType.ROLL_NUMBER, "ADMIN001")
-            .map(UserIdentifier::getUser)
-            .orElseGet(() -> {
-                UserAccount newAdmin = new UserAccount("Admin User", "Administration", Set.of(UserRole.ADMIN));
-                newAdmin.addIdentifier(new UserIdentifier(IdentifierType.ROLL_NUMBER, "ADMIN001", true));
-                return newAdmin;
-            });
-
-        admin.activate();
-        admin.getRoles().add(UserRole.ADMIN);
-        if (userIdentifierRepository.findByTypeAndValue(IdentifierType.QR_CREDENTIAL, "USER-QR-ADMIN001").isEmpty()) {
-            admin.addIdentifier(new UserIdentifier(IdentifierType.QR_CREDENTIAL, "USER-QR-ADMIN001", true));
+        boolean adminAlreadyExists = userAccountRepository.findAll().stream()
+            .anyMatch(user -> user.getRoles().contains(UserRole.ADMIN) || user.getRoles().contains(UserRole.SUPER_ADMIN));
+        if (adminAlreadyExists) {
+            return;
         }
-        userAccountRepository.save(admin);
 
-        String passwordHash = passwordEncoder.encode("admin123");
-        userCredentialRepository.findByUser(admin)
-            .ifPresentOrElse(
-                credential -> {
-                    credential.updatePasswordHash(passwordHash);
-                    userCredentialRepository.save(credential);
-                },
-                () -> userCredentialRepository.save(new UserCredential(admin, passwordHash))
-            );
+        UserAccount admin = new UserAccount("Admin User", "Administration", Set.of(UserRole.ADMIN));
+        admin.addIdentifier(new UserIdentifier(IdentifierType.ROLL_NUMBER, "ADMIN001", true));
+        admin.addIdentifier(new UserIdentifier(IdentifierType.QR_CREDENTIAL, "USER-QR-ADMIN001", true));
+        userAccountRepository.save(admin);
+        userCredentialRepository.save(new UserCredential(admin, passwordEncoder.encode("admin123")));
     }
 }
