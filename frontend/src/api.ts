@@ -120,6 +120,7 @@ export interface CirculationResponse {
   returnedOn: string | null;
   returnedAt?: string | null;
   status: "ISSUED" | "RETURNED" | "OVERDUE" | "LOST";
+  loanDays: number;
   loanPeriodDays: number;
   overdueDays: number;
   finePerDay: number;

@@ -1180,7 +1180,7 @@ export default function App() {
                       <div>
                         <strong>{book.bookTitle}</strong>
                         <span>
-                          {book.accessionNumber} · Return by {book.dueOn} · Loan {book.loanPeriodDays} days · {book.overdueDays} overdue days · Rs {book.finePerDay}/day
+                          {book.accessionNumber} · Return by {book.dueOn} · Loan {book.loanDays} days · {book.overdueDays} overdue days · Rs {book.finePerDay}/day
                         </span>
                       </div>
                       <span className="availability">Fine Rs {book.fineAmount}</span>
@@ -2196,7 +2196,7 @@ export default function App() {
                           ? ` · Returned ${formatDateTime(book.returnedAt, book.returnedOn)}`
                           : " · Not returned"}
                         {" · Loan "}
-                        {book.loanPeriodDays}
+                        {book.loanDays}
                         {" days · "}
                         {book.overdueDays}
                         {" overdue days · Rs "}

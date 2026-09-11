@@ -18,6 +18,7 @@ public record CirculationResponse(
     LocalDate returnedOn,
     Instant returnedAt,
     CirculationStatus status,
+    int loanDays,
     int loanPeriodDays,
     long overdueDays,
     long finePerDay,
@@ -32,6 +33,7 @@ public record CirculationResponse(
         long overdueDays = Math.max(0, ChronoUnit.DAYS.between(transaction.getDueOn(), fineUntil));
         long finePerDay = transaction.getBookCopy().getBook().getFinePerDay();
         long fineAmount = transaction.isFineReset() ? 0 : overdueDays * finePerDay;
+        int loanDays = (int) ChronoUnit.DAYS.between(transaction.getIssuedOn(), transaction.getDueOn());
 
         return new CirculationResponse(
             transaction.getId(),
@@ -46,6 +48,7 @@ public record CirculationResponse(
             transaction.getReturnedOn(),
             transaction.getReturnedAt(),
             transaction.getStatus(),
+            loanDays,
             transaction.getBookCopy().getBook().getLoanPeriodDays(),
             overdueDays,
             finePerDay,
