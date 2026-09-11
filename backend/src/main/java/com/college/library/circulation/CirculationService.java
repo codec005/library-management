@@ -67,17 +67,19 @@ public class CirculationService implements CirculationUseCase {
         UserAccount borrower = userIdentifierRepository
             .findByTypeAndValue(request.borrowerIdentifierType(), borrowerIdentifier)
             .filter(identifier -> identifier.getUser().isActive())
-            .orElseThrow(() -> new IllegalArgumentException("Student not found for the entered identifier"))
+            .orElseThrow(() -> new IllegalArgumentException("Borrower not found for the entered identifier"))
             .getUser();
         BookCopy copy = resolveBookCopy(request.bookScanType(), bookScanValue);
 
         boolean borrowerSelfIssue = actor.getId().equals(borrower.getId())
             && hasAnyRole(borrower, UserRole.STUDENT, UserRole.FACULTY);
-        boolean staffIssue = borrower.getRoles().contains(UserRole.STUDENT)
+        boolean staffIssue = hasAnyRole(borrower, UserRole.STUDENT, UserRole.FACULTY)
             && hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
 
         if (!borrowerSelfIssue && !staffIssue) {
-            throw new IllegalStateException("Only students or faculty can issue to themselves, or librarian/admin can issue to a student");
+            throw new IllegalStateException(
+                "Only students or faculty can issue to themselves, or librarian/admin can issue to a student or faculty member"
+            );
         }
 
         return issueCopyToBorrower(copy, borrower);
@@ -188,7 +190,7 @@ public class CirculationService implements CirculationUseCase {
         boolean staffViewingStudent = borrower.getRoles().contains(UserRole.STUDENT)
             && hasAnyRole(actor, UserRole.FACULTY, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
         boolean staffViewingFaculty = borrower.getRoles().contains(UserRole.FACULTY)
-            && hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN);
+            && hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
 
         if (!viewingSelf && !staffViewingStudent && !staffViewingFaculty) {
             throw new IllegalStateException("You are not allowed to view issued books for this user");

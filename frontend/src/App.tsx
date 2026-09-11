@@ -463,7 +463,7 @@ export default function App() {
 
   async function handleStaffIssue() {
     if (!currentUser) {
-      setMessage("Sign in as librarian or admin to issue a book to a student.");
+      setMessage("Sign in as librarian or admin to issue a book to a student or faculty member.");
       return;
     }
 
@@ -471,7 +471,7 @@ export default function App() {
     const bookScanValue = scanValue.trim();
 
     if (!borrowerIdentifier) {
-      setMessage("Enter the student's roll number or scan the student QR first.");
+      setMessage("Enter the roll number/staff code or scan the borrower QR first.");
       return;
     }
 
@@ -496,20 +496,20 @@ export default function App() {
         setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Issue to student failed.");
+      setMessage(error instanceof Error ? error.message : "Issue to borrower failed.");
     }
   }
 
   async function handleCheckStudent() {
     if (!currentUser) {
-      setMessage("Sign in as faculty, librarian, or admin to check a student.");
+      setMessage("Sign in as faculty, librarian, or admin to check a borrower.");
       return;
     }
 
     const borrowerIdentifier = staffBorrowerIdentifier.trim();
 
     if (!borrowerIdentifier) {
-      setMessage("Enter the student's roll number or scan the student QR first.");
+      setMessage("Enter the roll number/staff code or scan the borrower QR first.");
       return;
     }
 
@@ -523,10 +523,11 @@ export default function App() {
       setSelectedUserDetails(student);
       setSelectedUserIssuedBooks(await listIssuedBooksForUser(student.id, currentUser.userId));
       setStaffBorrowerIdentifier(borrowerIdentifier);
-      setMessage(`Student found: ${student.fullName}.`);
+      const roleLabel = student.roles.includes("FACULTY") ? "Faculty" : "Student";
+      setMessage(`${roleLabel} found: ${student.fullName}.`);
     } catch (error) {
       setCheckedStudent(null);
-      setMessage(error instanceof Error ? error.message : "Student check failed.");
+      setMessage(error instanceof Error ? error.message : "Borrower check failed.");
     }
   }
 
@@ -1137,7 +1138,7 @@ export default function App() {
           <div className="panel-title">
             <QrCode size={22} />
             <div>
-              <h2>{canIssueToStudents ? "Issue Book To Student" : isBorrower ? "Issue Book To Me" : "Book Scan"}</h2>
+              <h2>{canIssueToStudents ? "Issue Book To Student / Faculty" : isBorrower ? "Issue Book To Me" : "Book Scan"}</h2>
               {currentUser && <p>Scan a QR code or enter the value manually.</p>}
             </div>
           </div>
@@ -1148,11 +1149,11 @@ export default function App() {
             <div className="simple-scan-flow">
               {canViewStudentRecords && (
                 <div className="staff-issue-panel">
-                  <h3><span className="step-badge">1</span> Student</h3>
-                  <p>Step 1: Enter the student's roll number, or scan the student QR to view their issued books.</p>
+                  <h3><span className="step-badge">1</span> Borrower</h3>
+                  <p>Step 1: Enter the student roll number or faculty staff code, or scan their QR to view issued books.</p>
                   <div className="staff-issue-grid">
                     <input
-                      placeholder="Student roll number"
+                      placeholder="Roll number or staff code"
                       value={staffBorrowerIdentifierType === "ROLL_NUMBER" ? staffBorrowerIdentifier : ""}
                       onChange={(event) => {
                         setStaffBorrowerIdentifierType("ROLL_NUMBER");
@@ -1161,11 +1162,11 @@ export default function App() {
                       }}
                     />
                     <button type="button" disabled={!staffIssueStudentValue} onClick={() => void handleCheckStudent()}>
-                      Check Student
+                      Check Borrower
                     </button>
                   </div>
                   <QrScanner
-                    label="Scan Student QR"
+                    label="Scan Borrower QR"
                     onDetected={(value) => {
                       setStaffBorrowerIdentifierType("QR_CREDENTIAL");
                       setStaffBorrowerIdentifier(value);
@@ -1173,12 +1174,18 @@ export default function App() {
                     }}
                   />
                   {staffBorrowerIdentifierType === "QR_CREDENTIAL" && staffBorrowerIdentifier && (
-                    <p className="scan-captured-note">Student QR captured from scanner. Click Check Student to verify.</p>
+                    <p className="scan-captured-note">Borrower QR captured from scanner. Click Check Borrower to verify.</p>
                   )}
                   {checkedStudent && (
                     <div className="checked-student-card">
                       <strong>{checkedStudent.fullName}</strong>
-                      <span>{checkedStudent.department} · Roll Number {checkedStudent.identifiers.find((item) => item.type === "ROLL_NUMBER")?.value ?? "Not set"}</span>
+                      <span>
+                        {checkedStudent.department}
+                        {" · "}
+                        {checkedStudent.roles.includes("FACULTY") ? "Staff Code" : "Roll Number"}
+                        {" "}
+                        {checkedStudent.identifiers.find((item) => item.type === "ROLL_NUMBER")?.value ?? "Not set"}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -1221,12 +1228,12 @@ export default function App() {
                 )}
                 {canIssueToStudents && (
                   <button type="button" disabled={!isStaffIssueReady} onClick={() => void handleStaffIssue()}>
-                    Issue To Student
+                    Issue To Borrower
                   </button>
                 )}
               </div>
               {canIssueToStudents && !isStaffIssueReady && (
-                <p className="issue-hint">Enter the student roll number and the book copy QR/RFID/SSN value to issue.</p>
+                <p className="issue-hint">Enter the student roll number or faculty staff code and the book copy QR/RFID/SSN value to issue.</p>
               )}
 
               {scanResult && (

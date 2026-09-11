@@ -249,7 +249,7 @@ public class UserManagementService implements UserManagementUseCase {
         boolean staffViewingStudent = user.getRoles().contains(UserRole.STUDENT)
             && hasAnyRole(actor, UserRole.FACULTY, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
         boolean staffViewingFaculty = user.getRoles().contains(UserRole.FACULTY)
-            && hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN);
+            && hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
         boolean facultyViewingLibrarian = user.getRoles().contains(UserRole.LIBRARIAN)
             && hasAnyRole(actor, UserRole.FACULTY);
         boolean adminViewingStaff = hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN);
@@ -267,16 +267,21 @@ public class UserManagementService implements UserManagementUseCase {
         UserAccount actor = findActor(actorUserId);
 
         if (!hasAnyRole(actor, UserRole.FACULTY, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
-            throw new IllegalStateException("Only faculty, librarian, or admin can check students");
+            throw new IllegalStateException("Only faculty, librarian, or admin can check borrowers");
         }
 
         UserAccount user = userIdentifierRepository.findByTypeAndValue(identifierType, cleanValue(identifier))
             .filter(userIdentifier -> userIdentifier.getUser().isActive())
-            .orElseThrow(() -> new IllegalArgumentException("Student not found for the entered identifier"))
+            .orElseThrow(() -> new IllegalArgumentException("Borrower not found for the entered identifier"))
             .getUser();
 
-        if (!user.getRoles().contains(UserRole.STUDENT)) {
-            throw new IllegalStateException("The entered identifier does not belong to a student");
+        boolean studentBorrower = user.getRoles().contains(UserRole.STUDENT);
+        boolean facultyBorrower = user.getRoles().contains(UserRole.FACULTY);
+        boolean staffLookingUpFaculty = facultyBorrower
+            && hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN);
+
+        if (!studentBorrower && !staffLookingUpFaculty) {
+            throw new IllegalStateException("Enter a student roll number, or a faculty staff code when issuing as librarian/admin");
         }
 
         return UserDetailsResponse.from(user);
