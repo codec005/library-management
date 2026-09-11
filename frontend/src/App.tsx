@@ -3,6 +3,7 @@ import { BookOpen, Library, QrCode, Search, Users } from "lucide-react";
 import QRCode from "qrcode";
 import QrScanner from "./QrScanner";
 import {
+  AuditEventResponse,
   BookCopyScanResponse,
   BookCopySummary,
   BookCreateRequest,
@@ -20,12 +21,14 @@ import {
   getUserDetails,
   issueBookByIdentifier,
   issueBookCopy,
+  listAuditEvents,
   listBookCopies,
   listIssuedBooksForUser,
   listUsers,
   login,
   renewTransaction,
   registerUser,
+  removeBook,
   removeBookCopyByQrCode,
   removeUser,
   returnBookCopy,
@@ -67,8 +70,11 @@ export default function App() {
   const [isIssuedBooksWindowOpen, setIsIssuedBooksWindowOpen] = useState(false);
   const [isBookQrWindowOpen, setIsBookQrWindowOpen] = useState(false);
   const [bookCopyQrValue, setBookCopyQrValue] = useState("");
+  const [bookSsnToRemove, setBookSsnToRemove] = useState("");
   const [generateQrAfterAdd, setGenerateQrAfterAdd] = useState(false);
   const [generatedBookQrs, setGeneratedBookQrs] = useState<Array<BookCopySummary & { dataUrl: string }>>([]);
+  const [isAuditLogsOpen, setIsAuditLogsOpen] = useState(false);
+  const [auditEvents, setAuditEvents] = useState<AuditEventResponse[]>([]);
   const [registrationForm, setRegistrationForm] = useState<UserRegistrationRequest>({
     fullName: "",
     department: "",
@@ -386,7 +392,7 @@ export default function App() {
 
     const selectedCopy = scanResult ?? await resolveBookCopy();
     if (!selectedCopy) {
-      setMessage("Enter or scan a valid book QR/RFID value before issuing.");
+      setMessage("Enter or scan a valid book QR/RFID/SSN value before issuing.");
       return;
     }
 
@@ -416,7 +422,7 @@ export default function App() {
     }
 
     if (!bookScanValue) {
-      setMessage("Enter or scan the book copy QR/RFID value before issuing.");
+      setMessage("Enter or scan the book copy QR/RFID/SSN value before issuing.");
       return;
     }
 
@@ -625,7 +631,7 @@ export default function App() {
   }
 
   function handleDownloadBookQr(copy: BookCopySummary & { dataUrl: string }) {
-    downloadDataUrl(copy.dataUrl, `${copy.accessionNumber.toLowerCase()}-book-qr.png`);
+    downloadDataUrl(copy.dataUrl, `${copy.ssnNumber.toLowerCase().replace(/[^a-z0-9-]+/g, "-")}-book-qr.png`);
   }
 
   function downloadDataUrl(dataUrl: string, fileName: string) {
@@ -710,6 +716,42 @@ export default function App() {
       setMessage("Book copy removed from catalog.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Book copy removal failed.");
+    }
+  }
+
+  async function handleRemoveBookBySsn() {
+    if (!currentUser) {
+      setMessage("Sign in as librarian or admin to remove books.");
+      return;
+    }
+
+    const ssnNumber = bookSsnToRemove.trim();
+    if (!ssnNumber) {
+      setMessage("Enter the book SSN number first.");
+      return;
+    }
+
+    try {
+      await removeBook(ssnNumber, currentUser.userId);
+      setBooks(await searchBooks(query));
+      setBookSsnToRemove("");
+      setMessage(`Book with SSN ${ssnNumber} deleted from the database.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Book removal failed.");
+    }
+  }
+
+  async function handleOpenAuditLogs() {
+    if (!currentUser) {
+      setMessage("Sign in as admin to view audit logs.");
+      return;
+    }
+
+    try {
+      setAuditEvents(await listAuditEvents(currentUser.userId));
+      setIsAuditLogsOpen(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to load audit logs.");
     }
   }
 
@@ -1010,14 +1052,15 @@ export default function App() {
 
               <div className="staff-issue-panel">
                 <h3><span className="step-badge">2</span> Book Copy</h3>
-                <p>Step 2: Scan the book QR or enter the book QR/RFID value manually.</p>
+                <p>Step 2: Scan the book QR or enter the book QR/RFID/SSN value manually.</p>
                 <form className="scan-form" onSubmit={handleScan}>
                   <select value={scanType} onChange={(event) => setScanType(event.target.value as ScanType)}>
                     <option value="QR">Book QR</option>
                     <option value="RFID">RFID Tag</option>
+                    <option value="SSN">SSN Number</option>
                   </select>
                   <input
-                    placeholder="Book QR or RFID value"
+                    placeholder={scanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}
                     value={scanValue}
                     onChange={(event) => {
                       setScanValue(event.target.value);
@@ -1049,7 +1092,7 @@ export default function App() {
                 )}
               </div>
               {canIssueToStudents && !isStaffIssueReady && (
-                <p className="issue-hint">Enter the student roll number and the book copy QR/RFID value to issue.</p>
+                <p className="issue-hint">Enter the student roll number and the book copy QR/RFID/SSN value to issue.</p>
               )}
 
               {scanResult && (
@@ -1058,6 +1101,10 @@ export default function App() {
                   <h3>{scanResult.title}</h3>
                   <p>{scanResult.author}</p>
                   <dl>
+                    <div>
+                      <dt>SSN</dt>
+                      <dd>{scanResult.ssnNumber}</dd>
+                    </div>
                     <div>
                       <dt>Accession</dt>
                       <dd>{scanResult.accessionNumber}</dd>
@@ -1130,6 +1177,11 @@ export default function App() {
           {canViewUserDirectory && (
             <button type="button" className="secondary-button directory-button" onClick={() => setIsUserDirectoryOpen(true)}>
               Open {canManageLibrarians ? "User Directory" : isFaculty ? "Student And Librarian Directory" : "Student Directory"}
+            </button>
+          )}
+          {canManageLibrarians && (
+            <button type="button" className="secondary-button directory-button" onClick={() => void handleOpenAuditLogs()}>
+              Open Audit Logs
             </button>
           )}
         </article>
@@ -1265,11 +1317,26 @@ export default function App() {
             )}
 
             <div className="staff-issue-panel">
+              <h3>Remove Book By SSN</h3>
+              <p>Enter the book SSN number to delete the book and all its copies from the database.</p>
+              <div className="staff-issue-grid remove-copy-grid">
+                <input
+                  placeholder="Example: 2512130300019"
+                  value={bookSsnToRemove}
+                  onChange={(event) => setBookSsnToRemove(event.target.value)}
+                />
+                <button type="button" className="danger-button" onClick={() => void handleRemoveBookBySsn()}>
+                  Delete Book
+                </button>
+              </div>
+            </div>
+
+            <div className="staff-issue-panel">
               <h3>Remove Existing Copy</h3>
               <p>Enter or scan the exact QR value for the physical copy to remove.</p>
               <div className="staff-issue-grid remove-copy-grid">
                 <input
-                  placeholder="Example: BOOK-QR-ACC-..."
+                  placeholder="Example: BOOK-QR-2512130300019"
                   value={bookCopyQrValue}
                   onChange={(event) => setBookCopyQrValue(event.target.value)}
                 />
@@ -1559,6 +1626,54 @@ export default function App() {
                           </button>
                         </>
                       )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAuditLogsOpen && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Audit logs"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAuditLogsOpen(false);
+            }
+          }}
+        >
+          <div className="modal-panel issued-books-window">
+            <div className="modal-header">
+              <div>
+                <h2>Audit Logs</h2>
+                <p>Recent system activity for admin review.</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setIsAuditLogsOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            <div className="issued-list">
+              {auditEvents.length === 0 ? (
+                <p>No audit events found.</p>
+              ) : (
+                auditEvents.map((event) => (
+                  <div className="compact-row" key={event.id}>
+                    <div>
+                      <strong>{event.action.replace(/_/g, " ")}</strong>
+                      <span>
+                        {new Date(event.createdAt).toLocaleString()} · {event.targetType ?? "N/A"} · {event.details}
+                      </span>
+                    </div>
+                    <div className="compact-actions">
+                      <span className="availability">
+                        Actor {event.actorUserId ? event.actorUserId.slice(0, 8) : "system"}
+                      </span>
                     </div>
                   </div>
                 ))

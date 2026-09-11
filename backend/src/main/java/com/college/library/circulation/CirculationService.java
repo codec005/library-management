@@ -114,6 +114,7 @@ public class CirculationService implements CirculationUseCase {
         java.util.Optional<BookCopy> copy = switch (scanType) {
             case QR -> bookCopyRepository.findByQrCodeValueForUpdate(scanValue);
             case RFID -> bookCopyRepository.findByRfidTagUidHashForUpdate(scanValue);
+            case SSN -> bookCopyRepository.findBySsnNumberForUpdate(scanValue);
         };
 
         return copy.orElseThrow(() -> new IllegalArgumentException("Book copy not found"));

@@ -35,4 +35,24 @@ public class AuditEvent extends BaseEntity {
         this.targetId = targetId;
         this.details = details;
     }
+
+    public AuditAction getAction() {
+        return action;
+    }
+
+    public UUID getActorUserId() {
+        return actorUserId;
+    }
+
+    public String getTargetType() {
+        return targetType;
+    }
+
+    public UUID getTargetId() {
+        return targetId;
+    }
+
+    public String getDetails() {
+        return details;
+    }
 }

@@ -57,6 +57,7 @@ public class DefaultCatalogService implements CatalogService {
         Optional<BookCopyScanResponse> response = switch (type) {
             case QR -> bookCopyRepository.findByQrCodeValue(value).map(BookCopyScanResponse::from);
             case RFID -> bookCopyRepository.findByRfidTagUidHash(value).map(BookCopyScanResponse::from);
+            case SSN -> bookCopyRepository.findBySsnNumber(value).map(BookCopyScanResponse::from);
         };
 
         response.ifPresent(scan -> auditLogger.record(AuditAction.BOOK_SCAN, null, "BookCopy", scan.copyId(), type.name()));
@@ -82,12 +83,12 @@ public class DefaultCatalogService implements CatalogService {
             request.finePerDay(),
             request.loanPeriodDays()
         );
-        String normalizedTitle = request.title().replaceAll("[^A-Za-z0-9]", "").toUpperCase();
 
         for (int index = 1; index <= request.copyCount(); index++) {
             String copySsn = request.copyCount() == 1 ? baseSsn : baseSsn + "-" + index;
-            String accessionNumber = "ACC-" + normalizedTitle + "-" + System.currentTimeMillis() + "-" + index;
-            book.addCopy(new BookCopy(copySsn, accessionNumber, "BOOK-QR-" + accessionNumber, request.shelfLocation()));
+            String accessionNumber = "ACC-" + copySsn;
+            String qrCodeValue = "BOOK-QR-" + copySsn;
+            book.addCopy(new BookCopy(copySsn, accessionNumber, qrCodeValue, request.shelfLocation()));
         }
 
         Book savedBook = bookRepository.save(book);

@@ -1,6 +1,6 @@
 export type IdentifierType = "ROLL_NUMBER" | "COLLEGE_EMAIL" | "PHONE_NUMBER" | "QR_CREDENTIAL" | "RFID_CARD";
 export type UserRole = "STUDENT" | "FACULTY" | "LIBRARIAN" | "ADMIN" | "SUPER_ADMIN";
-export type ScanType = "QR" | "RFID";
+export type ScanType = "QR" | "RFID" | "SSN";
 export type BookCopyStatus = "AVAILABLE" | "ISSUED" | "RESERVED" | "DAMAGED" | "LOST" | "UNDER_MAINTENANCE" | "REMOVED";
 
 export interface LoginResponse {
@@ -100,6 +100,16 @@ export interface CirculationResponse {
   overdueDays: number;
   finePerDay: number;
   fineAmount: number;
+}
+
+export interface AuditEventResponse {
+  id: string;
+  action: string;
+  actorUserId: string | null;
+  targetType: string | null;
+  targetId: string | null;
+  details: string;
+  createdAt: string;
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -292,6 +302,12 @@ export function getBookCopyByQrCode(qrCodeValue: string, actorUserId: string) {
 export function removeBookCopyByQrCode(qrCodeValue: string, actorUserId: string) {
   return request<void>(`/api/catalog/copies/by-qr?value=${encodeURIComponent(qrCodeValue)}`, {
     method: "DELETE",
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
+export function listAuditEvents(actorUserId: string) {
+  return request<AuditEventResponse[]>("/api/audit/events", {
     headers: { "X-Actor-User-Id": actorUserId }
   });
 }
