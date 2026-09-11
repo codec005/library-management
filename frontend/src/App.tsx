@@ -645,11 +645,7 @@ export default function App() {
         password: "",
         role: "STUDENT"
       });
-      setMessage(
-        registrationForm.role === "STUDENT"
-          ? `${user.fullName} registered as STUDENT with default password student123.`
-          : `${user.fullName} registered as ${user.roles[0]}.`
-      );
+      setMessage(`${user.fullName} registered as ${user.roles[0]}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Registration failed.");
     }
@@ -1367,9 +1363,6 @@ export default function App() {
                 value={registrationForm.password ?? ""}
                 onChange={(event) => setRegistrationForm({ ...registrationForm, password: event.target.value })}
               />
-            )}
-            {registrationForm.role === "STUDENT" && (
-              <p className="list-note">Student accounts use default password student123.</p>
             )}
             <select
               value={registrationForm.role}
