@@ -105,10 +105,9 @@ export interface CirculationResponse {
 export interface AuditEventResponse {
   id: string;
   action: string;
-  actorUserId: string | null;
-  targetType: string | null;
-  targetId: string | null;
-  details: string;
+  actionLabel: string;
+  summary: string;
+  doneBy: string;
   createdAt: string;
 }
 
@@ -306,8 +305,24 @@ export function removeBookCopyByQrCode(qrCodeValue: string, actorUserId: string)
   });
 }
 
-export function listAuditEvents(actorUserId: string) {
-  return request<AuditEventResponse[]>("/api/audit/events", {
+export function listAuditEvents(
+  actorUserId: string,
+  fromDate?: string,
+  toDate?: string,
+  action?: string
+) {
+  const params = new URLSearchParams();
+  if (fromDate) {
+    params.set("from", fromDate);
+  }
+  if (toDate) {
+    params.set("to", toDate);
+  }
+  if (action) {
+    params.set("action", action);
+  }
+  const query = params.toString();
+  return request<AuditEventResponse[]>(`/api/audit/events${query ? `?${query}` : ""}`, {
     headers: { "X-Actor-User-Id": actorUserId }
   });
 }

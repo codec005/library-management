@@ -66,7 +66,7 @@ public class UserManagementService implements UserManagementUseCase {
         }
 
         UserAccount user = createUser(request);
-        auditLogger.record(AuditAction.USER_REGISTER, actor.getId(), "UserAccount", user.getId(), request.role().name());
+        auditLogger.record(AuditAction.USER_REGISTER, actor.getId(), "UserAccount", user.getId(), request.role().name() + " · " + user.getFullName());
         return UserSummary.from(user);
     }
 

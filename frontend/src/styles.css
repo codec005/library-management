@@ -510,6 +510,22 @@ label {
   grid-template-columns: auto 1fr auto;
 }
 
+.audit-date-filter {
+  align-items: end;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) auto;
+}
+
+.audit-date-filter label {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.audit-date-filter input[type="date"],
+.audit-date-filter select {
+  width: 100%;
+}
+
 .scan-form {
   grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
 }

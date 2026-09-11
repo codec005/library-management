@@ -40,6 +40,21 @@ import {
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 const COPYRIGHT_YEAR = new Date().getFullYear();
 
+const AUDIT_ACTION_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "", label: "All types" },
+  { value: "PASSWORD_LOGIN", label: "Password login" },
+  { value: "SCAN_LOGIN", label: "Scan login" },
+  { value: "USER_REGISTER", label: "User registered" },
+  { value: "USER_REMOVE", label: "User deleted" },
+  { value: "USER_QR_GENERATE", label: "User QR generated" },
+  { value: "BOOK_ADD", label: "Book added" },
+  { value: "BOOK_REMOVE", label: "Book removed" },
+  { value: "BOOK_SCAN", label: "Book scan" },
+  { value: "BOOK_ISSUE", label: "Book issued" },
+  { value: "BOOK_RETURN", label: "Book returned" },
+  { value: "BOOK_RENEW", label: "Book renewed" }
+];
+
 export default function App() {
   const [identifierType, setIdentifierType] = useState<IdentifierType>("ROLL_NUMBER");
   const [identifier, setIdentifier] = useState("");
@@ -75,6 +90,13 @@ export default function App() {
   const [generatedBookQrs, setGeneratedBookQrs] = useState<Array<BookCopySummary & { dataUrl: string }>>([]);
   const [isAuditLogsOpen, setIsAuditLogsOpen] = useState(false);
   const [auditEvents, setAuditEvents] = useState<AuditEventResponse[]>([]);
+  const [auditFromDate, setAuditFromDate] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 7);
+    return date.toISOString().slice(0, 10);
+  });
+  const [auditToDate, setAuditToDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [auditActionFilter, setAuditActionFilter] = useState("");
   const [registrationForm, setRegistrationForm] = useState<UserRegistrationRequest>({
     fullName: "",
     department: "",
@@ -748,8 +770,28 @@ export default function App() {
     }
 
     try {
-      setAuditEvents(await listAuditEvents(currentUser.userId));
+      setAuditEvents(await listAuditEvents(currentUser.userId, auditFromDate, auditToDate, auditActionFilter || undefined));
       setIsAuditLogsOpen(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to load audit logs.");
+    }
+  }
+
+  async function handleFilterAuditLogs(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!currentUser) {
+      setMessage("Sign in as admin to view audit logs.");
+      return;
+    }
+
+    if (auditFromDate && auditToDate && auditToDate < auditFromDate) {
+      setMessage("To date cannot be before from date.");
+      return;
+    }
+
+    try {
+      setAuditEvents(await listAuditEvents(currentUser.userId, auditFromDate, auditToDate, auditActionFilter || undefined));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to load audit logs.");
     }
@@ -1651,29 +1693,56 @@ export default function App() {
             <div className="modal-header">
               <div>
                 <h2>Audit Logs</h2>
-                <p>Recent system activity for admin review.</p>
+                <p>Choose a date range to review system activity.</p>
               </div>
               <button type="button" className="secondary-button" onClick={() => setIsAuditLogsOpen(false)}>
                 Close
               </button>
             </div>
 
+            <form className="inline-form audit-date-filter" onSubmit={handleFilterAuditLogs}>
+              <label>
+                From
+                <input
+                  type="date"
+                  value={auditFromDate}
+                  onChange={(event) => setAuditFromDate(event.target.value)}
+                />
+              </label>
+              <label>
+                To
+                <input
+                  type="date"
+                  value={auditToDate}
+                  onChange={(event) => setAuditToDate(event.target.value)}
+                />
+              </label>
+              <label>
+                Type
+                <select value={auditActionFilter} onChange={(event) => setAuditActionFilter(event.target.value)}>
+                  {AUDIT_ACTION_OPTIONS.map((option) => (
+                    <option key={option.value || "all"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit">Show Logs</button>
+            </form>
+
             <div className="issued-list">
               {auditEvents.length === 0 ? (
-                <p>No audit events found.</p>
+                <p>No audit events found for this filter.</p>
               ) : (
                 auditEvents.map((event) => (
                   <div className="compact-row" key={event.id}>
                     <div>
-                      <strong>{event.action.replace(/_/g, " ")}</strong>
-                      <span>
-                        {new Date(event.createdAt).toLocaleString()} · {event.targetType ?? "N/A"} · {event.details}
-                      </span>
+                      <strong>{event.actionLabel}</strong>
+                      <span>{event.summary}</span>
+                      <span>{new Date(event.createdAt).toLocaleString()}</span>
                     </div>
                     <div className="compact-actions">
-                      <span className="availability">
-                        Actor {event.actorUserId ? event.actorUserId.slice(0, 8) : "system"}
-                      </span>
+                      <span className="availability">By {event.doneBy}</span>
                     </div>
                   </div>
                 ))

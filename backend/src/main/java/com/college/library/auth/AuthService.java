@@ -57,7 +57,7 @@ public class AuthService implements AuthUseCase {
             throw new BadCredentialsException("Invalid login details");
         }
 
-        auditLogger.record(AuditAction.PASSWORD_LOGIN, user.getId(), "UserAccount", user.getId(), request.identifierType().name());
+        auditLogger.record(AuditAction.PASSWORD_LOGIN, user.getId(), "UserAccount", user.getId(), user.getFullName() + " · " + request.identifierType().name());
         return new LoginResponse(user.getId(), user.getFullName(), user.getRoles(), "dev-token-" + UUID.randomUUID());
     }
 
@@ -81,7 +81,7 @@ public class AuthService implements AuthUseCase {
             throw new BadCredentialsException("Staff must use ID and password login");
         }
 
-        auditLogger.record(AuditAction.SCAN_LOGIN, user.getId(), "UserAccount", user.getId(), request.identifierType().name());
+        auditLogger.record(AuditAction.SCAN_LOGIN, user.getId(), "UserAccount", user.getId(), user.getFullName() + " · " + request.identifierType().name());
         return new LoginResponse(user.getId(), user.getFullName(), user.getRoles(), "scan-token-" + UUID.randomUUID());
     }
 
