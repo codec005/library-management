@@ -1,12 +1,13 @@
 package com.college.library.catalog;
 
+import com.college.library.common.PageResponse;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface CatalogService {
 
-    List<BookSummary> searchBooks(String query);
+    PageResponse<BookSummary> searchBooks(String query, boolean availableOnly, int page, int size);
 
     Optional<BookCopyScanResponse> scanCopy(ScanType type, String value, UUID actorUserId);
 

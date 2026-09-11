@@ -1,7 +1,7 @@
 package com.college.library.audit;
 
+import com.college.library.common.PageResponse;
 import java.time.LocalDate;
-import java.util.List;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -24,12 +24,14 @@ public class AuditController {
     }
 
     @GetMapping("/events")
-    ResponseEntity<List<AuditEventResponse>> listEvents(
+    ResponseEntity<PageResponse<AuditEventResponse>> listEvents(
         @RequestHeader(ACTOR_HEADER) UUID actorUserId,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-        @RequestParam(required = false) AuditAction action
+        @RequestParam(required = false) AuditAction action,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size
     ) {
-        return ResponseEntity.ok(auditUseCase.listEvents(actorUserId, from, to, action));
+        return ResponseEntity.ok(auditUseCase.listEvents(actorUserId, from, to, action, page, size));
     }
 }

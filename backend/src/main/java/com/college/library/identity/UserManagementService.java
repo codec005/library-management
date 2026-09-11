@@ -4,9 +4,11 @@ import com.college.library.audit.AuditAction;
 import com.college.library.audit.AuditLogger;
 import com.college.library.circulation.CirculationStatus;
 import com.college.library.circulation.CirculationTransactionRepository;
+import com.college.library.common.PageResponse;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -289,11 +291,35 @@ public class UserManagementService implements UserManagementUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public List<UserSummary> listUsers() {
-        return userAccountRepository.findAll().stream()
-            .filter(UserAccount::isActive)
-            .map(UserSummary::from)
-            .toList();
+    public PageResponse<UserSummary> listUsers(UUID actorUserId, String query, int page, int size) {
+        UserAccount actor = findActor(actorUserId);
+        if (!hasAnyRole(actor, UserRole.FACULTY, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only staff can view the user directory");
+        }
+
+        String cleanedQuery = query == null ? "" : query.trim();
+        boolean restrictRoles = !hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN);
+        java.util.Collection<UserRole> roles;
+        if (!restrictRoles) {
+            roles = java.util.List.of(UserRole.STUDENT);
+        } else if (actor.getRoles().contains(UserRole.FACULTY) && !hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            roles = java.util.List.of(UserRole.STUDENT, UserRole.LIBRARIAN);
+        } else {
+            roles = java.util.List.of(UserRole.STUDENT);
+        }
+
+        var pageable = PageResponse.pageable(page, size, Sort.by("fullName").ascending());
+        if (cleanedQuery.isEmpty()) {
+            return PageResponse.from(
+                userAccountRepository.findActiveUsers(restrictRoles, roles, pageable).map(UserSummary::from)
+            );
+        }
+
+        return PageResponse.from(
+            userAccountRepository
+                .searchActiveUsersPrefix(cleanedQuery, restrictRoles, roles, pageable)
+                .map(UserSummary::from)
+        );
     }
 
     private UserAccount createUser(UserRegistrationRequest request) {

@@ -204,8 +204,26 @@ export function scanLogin(identifierType: "QR_CREDENTIAL" | "RFID_CARD", identif
   });
 }
 
-export function searchBooks(query: string) {
-  return request<BookSummary[]>(`/api/catalog/books?query=${encodeURIComponent(query)}`);
+export interface PageResponse<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export function searchBooks(
+  query: string,
+  options?: { availableOnly?: boolean; page?: number; size?: number }
+) {
+  const params = new URLSearchParams();
+  params.set("query", query);
+  if (options?.availableOnly) {
+    params.set("availableOnly", "true");
+  }
+  params.set("page", String(options?.page ?? 0));
+  params.set("size", String(options?.size ?? 10));
+  return request<PageResponse<BookSummary>>(`/api/catalog/books?${params.toString()}`);
 }
 
 export function registerStudentAsGuest(payload: UserRegistrationRequest) { // curreentky disabled
@@ -231,8 +249,16 @@ export function updateUser(userId: string, payload: UserUpdateRequest, actorUser
   });
 }
 
-export function listUsers() {
-  return request<UserSummary[]>("/api/users");
+export function listUsers(actorUserId: string, query = "", page = 0, size = 10) {
+  const params = new URLSearchParams();
+  if (query.trim()) {
+    params.set("query", query.trim());
+  }
+  params.set("page", String(page));
+  params.set("size", String(size));
+  return request<PageResponse<UserSummary>>(`/api/users?${params.toString()}`, {
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
 }
 
 export function removeStudent(studentId: string, actorUserId: string) {
@@ -316,6 +342,27 @@ export function returnBookCopy(bookCopyId: string, actorUserId: string, resetFin
   });
 }
 
+export function returnBookByIdentifier(
+  actorUserId: string,
+  borrowerIdentifierType: IdentifierType,
+  borrowerIdentifier: string,
+  bookScanType: ScanType,
+  bookScanValue: string,
+  resetFine = false
+) {
+  return request<CirculationResponse>("/api/circulation/return/by-identifier", {
+    method: "POST",
+    headers: { "X-Actor-User-Id": actorUserId },
+    body: JSON.stringify({
+      borrowerIdentifierType,
+      borrowerIdentifier,
+      bookScanType,
+      bookScanValue,
+      resetFine
+    })
+  });
+}
+
 export function renewTransaction(transactionId: string, actorUserId: string, renewalDays?: number) {
   return request<CirculationResponse>(`/api/circulation/renew/${transactionId}`, {
     method: "POST",
@@ -382,7 +429,9 @@ export function listAuditEvents(
   actorUserId: string,
   fromDate?: string,
   toDate?: string,
-  action?: string
+  action?: string,
+  page = 0,
+  size = 10
 ) {
   const params = new URLSearchParams();
   if (fromDate) {
@@ -394,8 +443,9 @@ export function listAuditEvents(
   if (action) {
     params.set("action", action);
   }
-  const query = params.toString();
-  return request<AuditEventResponse[]>(`/api/audit/events${query ? `?${query}` : ""}`, {
+  params.set("page", String(page));
+  params.set("size", String(size));
+  return request<PageResponse<AuditEventResponse>>(`/api/audit/events?${params.toString()}`, {
     headers: { "X-Actor-User-Id": actorUserId }
   });
 }

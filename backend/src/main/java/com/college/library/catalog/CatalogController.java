@@ -1,5 +1,6 @@
 package com.college.library.catalog;
 
+import com.college.library.common.PageResponse;
 import java.util.List;
 import java.util.UUID;
 import jakarta.validation.Valid;
@@ -29,8 +30,13 @@ public class CatalogController {
     }
 
     @GetMapping("/books")
-    ResponseEntity<List<BookSummary>> searchBooks(@RequestParam(defaultValue = "") String query) {
-        return ResponseEntity.ok(catalogService.searchBooks(query));
+    ResponseEntity<PageResponse<BookSummary>> searchBooks(
+        @RequestParam(defaultValue = "") String query,
+        @RequestParam(defaultValue = "false") boolean availableOnly,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size
+    ) {
+        return ResponseEntity.ok(catalogService.searchBooks(query, availableOnly, page, size));
     }
 
     @GetMapping("/scan")

@@ -157,6 +157,88 @@ public class CirculationService implements CirculationUseCase {
             .findByBookCopyAndStatus(copy, CirculationStatus.ISSUED)
             .orElseThrow(() -> new IllegalStateException("Book copy is not currently issued"));
 
+        return completeReturn(transaction, copy, resetFine, actor);
+    }
+
+    @Override
+    @Transactional
+    public CirculationResponse returnByIdentifier(ReturnByIdentifierRequest request, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+
+        if (!hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only librarian or admin can return issued books");
+        }
+
+        if (request.borrowerIdentifierType() != IdentifierType.ROLL_NUMBER
+            && request.borrowerIdentifierType() != IdentifierType.QR_CREDENTIAL) {
+            throw new IllegalArgumentException("Return requires student/faculty roll number/staff code or QR");
+        }
+
+        String borrowerIdentifier = cleanValue(request.borrowerIdentifier());
+        String bookScanValue = cleanValue(request.bookScanValue());
+        UserAccount borrower = userIdentifierRepository
+            .findByTypeAndValue(request.borrowerIdentifierType(), borrowerIdentifier)
+            .filter(identifier -> identifier.getUser().isActive())
+            .orElseThrow(() -> new IllegalArgumentException("Borrower not found for the entered identifier"))
+            .getUser();
+
+        if (!hasAnyRole(borrower, UserRole.STUDENT, UserRole.FACULTY)) {
+            throw new IllegalStateException("Only student or faculty loans can be returned with this flow");
+        }
+
+        CirculationTransaction transaction = resolveIssuedTransaction(borrower, request.bookScanType(), bookScanValue);
+        BookCopy copy = bookCopyRepository.findByIdForUpdate(transaction.getBookCopy().getId())
+            .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
+        CirculationTransaction lockedTransaction = circulationTransactionRepository
+            .findByBookCopyAndStatus(copy, CirculationStatus.ISSUED)
+            .orElseThrow(() -> new IllegalStateException("Book copy is not currently issued"));
+
+        if (!lockedTransaction.getBorrower().getId().equals(borrower.getId())) {
+            throw new IllegalStateException("This book is not issued to the scanned borrower");
+        }
+
+        boolean resetFine = Boolean.TRUE.equals(request.resetFine());
+        return completeReturn(lockedTransaction, copy, resetFine, actor);
+    }
+
+    private CirculationTransaction resolveIssuedTransaction(
+        UserAccount borrower,
+        ScanType bookScanType,
+        String bookScanValue
+    ) {
+        List<CirculationTransaction> matches = circulationTransactionRepository.findIssuedMatchesForBorrower(
+            borrower,
+            CirculationStatus.ISSUED,
+            bookScanValue
+        );
+
+        if (matches.isEmpty() && bookScanType == ScanType.RFID) {
+            BookCopy copy = bookCopyRepository.findByRfidTagUidHashForUpdate(bookScanValue)
+                .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
+            CirculationTransaction transaction = circulationTransactionRepository
+                .findByBookCopyAndStatus(copy, CirculationStatus.ISSUED)
+                .orElseThrow(() -> new IllegalStateException("Book copy is not currently issued"));
+            if (!transaction.getBorrower().getId().equals(borrower.getId())) {
+                throw new IllegalStateException("This book is not issued to the scanned borrower");
+            }
+            return transaction;
+        }
+
+        if (matches.isEmpty()) {
+            throw new IllegalArgumentException("No issued book matched this borrower and book identifier");
+        }
+        if (matches.size() > 1) {
+            throw new IllegalStateException("Multiple issued copies matched. Use the book copy QR or accession number.");
+        }
+        return matches.getFirst();
+    }
+
+    private CirculationResponse completeReturn(
+        CirculationTransaction transaction,
+        BookCopy copy,
+        boolean resetFine,
+        UserAccount actor
+    ) {
         transaction.markReturned(LocalDate.now(), resetFine);
         UserAccount borrower = transaction.getBorrower();
         String auditDetails = borrowerLabel(borrower) + " · " + copy.getAccessionNumber()

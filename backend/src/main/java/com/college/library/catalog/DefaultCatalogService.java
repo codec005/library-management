@@ -3,6 +3,7 @@ package com.college.library.catalog;
 import com.college.library.audit.AuditAction;
 import com.college.library.audit.AuditLogger;
 import com.college.library.circulation.CirculationTransactionRepository;
+import com.college.library.common.PageResponse;
 import com.college.library.identity.UserAccount;
 import com.college.library.identity.UserAccountRepository;
 import com.college.library.identity.UserRole;
@@ -10,6 +11,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,17 +41,34 @@ public class DefaultCatalogService implements CatalogService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<BookSummary> searchBooks(String query) {
-        List<Book> books = query.isBlank()
-            ? bookRepository.findAll()
-            : bookRepository.findByTitleContainingIgnoreCaseOrAuthorContainingIgnoreCaseOrCategoryContainingIgnoreCaseOrSsnNumberContainingIgnoreCase(
-                query,
-                query,
-                query,
-                query
-            );
+    public PageResponse<BookSummary> searchBooks(String query, boolean availableOnly, int page, int size) {
+        String cleanedQuery = query == null ? "" : query.trim();
+        var pageable = PageResponse.pageable(page, size, Sort.by("title").ascending());
 
-        return books.stream().map(BookSummary::from).toList();
+        if (cleanedQuery.isEmpty()) {
+            return PageResponse.from(bookRepository.findAllFiltered(availableOnly, pageable).map(BookSummary::from));
+        }
+
+        var exact = bookRepository.findBySsnNumberIgnoreCase(cleanedQuery);
+        if (exact.isPresent()) {
+            Book book = exact.get();
+            boolean include = !availableOnly || book.getCopies().stream()
+                .anyMatch(copy -> copy.getStatus() == BookCopyStatus.AVAILABLE);
+            if (include) {
+                return PageResponse.from(
+                    new PageImpl<>(
+                        java.util.List.of(BookSummary.from(book)),
+                        pageable,
+                        1
+                    )
+                );
+            }
+            return PageResponse.from(org.springframework.data.domain.Page.empty(pageable));
+        }
+
+        return PageResponse.from(
+            bookRepository.searchPrefix(cleanedQuery, availableOnly, pageable).map(BookSummary::from)
+        );
     }
 
     @Override

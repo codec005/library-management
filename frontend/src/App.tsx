@@ -36,6 +36,7 @@ import {
   removeBook,
   removeBookCopyByQrCode,
   removeUser,
+  returnBookByIdentifier,
   returnBookCopy,
   scanBookCopy,
   scanLogin,
@@ -88,6 +89,65 @@ function groupBooksByTitle(books: BookSummary[], onlyAvailable = false): Grouped
   return Array.from(grouped.values()).sort((left, right) => left.title.localeCompare(right.title));
 }
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
+type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
+
+function PaginationControls({
+  page,
+  totalPages,
+  totalElements,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  label = "records"
+}: {
+  page: number;
+  totalPages: number;
+  totalElements: number;
+  pageSize: PageSize;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: PageSize) => void;
+  label?: string;
+}) {
+  const safeTotalPages = Math.max(totalPages, 1);
+
+  return (
+    <div className="pagination-bar">
+      <label className="pagination-size">
+        Per page
+        <select
+          value={pageSize}
+          onChange={(event) => onPageSizeChange(Number(event.target.value) as PageSize)}
+        >
+          {PAGE_SIZE_OPTIONS.map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span className="pagination-meta">
+        {totalElements === 0
+          ? `0 ${label}`
+          : `Page ${page + 1} of ${safeTotalPages} · ${totalElements} ${label}`}
+      </span>
+      <div className="pagination-actions">
+        <button type="button" className="secondary-button" disabled={page <= 0} onClick={() => onPageChange(page - 1)}>
+          Previous
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={page + 1 >= safeTotalPages || totalElements === 0}
+          onClick={() => onPageChange(page + 1)}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const AUDIT_ACTION_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "", label: "All types" },
   { value: "PASSWORD_LOGIN", label: "Password login" },
@@ -119,12 +179,25 @@ export default function App() {
   const [isCatalogWindowOpen, setIsCatalogWindowOpen] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalogBooks, setCatalogBooks] = useState<BookSummary[]>([]);
+  const [catalogPage, setCatalogPage] = useState(0);
+  const [catalogPageSize, setCatalogPageSize] = useState<PageSize>(10);
+  const [catalogTotalPages, setCatalogTotalPages] = useState(0);
+  const [catalogTotalElements, setCatalogTotalElements] = useState(0);
   const [users, setUsers] = useState<UserSummary[]>([]);
+  const [userDirectoryPage, setUserDirectoryPage] = useState(0);
+  const [userDirectoryPageSize, setUserDirectoryPageSize] = useState<PageSize>(10);
+  const [userDirectoryTotalPages, setUserDirectoryTotalPages] = useState(0);
+  const [userDirectoryTotalElements, setUserDirectoryTotalElements] = useState(0);
   const [scanType, setScanType] = useState<ScanType>("QR");
   const [scanValue, setScanValue] = useState("");
   const [staffBorrowerIdentifierType, setStaffBorrowerIdentifierType] = useState<IdentifierType>("ROLL_NUMBER");
   const [staffBorrowerIdentifier, setStaffBorrowerIdentifier] = useState("");
   const [checkedStudent, setCheckedStudent] = useState<UserDetailsResponse | null>(null);
+  const [returnBorrowerIdentifierType, setReturnBorrowerIdentifierType] = useState<IdentifierType>("ROLL_NUMBER");
+  const [returnBorrowerIdentifier, setReturnBorrowerIdentifier] = useState("");
+  const [returnScanType, setReturnScanType] = useState<ScanType>("QR");
+  const [returnScanValue, setReturnScanValue] = useState("");
+  const [returnResetFine, setReturnResetFine] = useState(false);
   const [scanResult, setScanResult] = useState<BookCopyScanResponse | null>(null);
   const [myProfile, setMyProfile] = useState<UserDetailsResponse | null>(null);
   const [myIssuedBooks, setMyIssuedBooks] = useState<CirculationResponse[]>([]);
@@ -140,6 +213,10 @@ export default function App() {
   const [generatedBookQrs, setGeneratedBookQrs] = useState<Array<BookCopySummary & { dataUrl: string }>>([]);
   const [isAuditLogsOpen, setIsAuditLogsOpen] = useState(false);
   const [auditEvents, setAuditEvents] = useState<AuditEventResponse[]>([]);
+  const [auditPage, setAuditPage] = useState(0);
+  const [auditPageSize, setAuditPageSize] = useState<PageSize>(10);
+  const [auditTotalPages, setAuditTotalPages] = useState(0);
+  const [auditTotalElements, setAuditTotalElements] = useState(0);
   const [auditLogsLoaded, setAuditLogsLoaded] = useState(false);
   const [auditFromDate, setAuditFromDate] = useState(() => {
     const date = new Date();
@@ -223,37 +300,11 @@ export default function App() {
   const staffIssueStudentValue = staffBorrowerIdentifier.trim();
   const staffIssueBookValue = scanValue.trim();
   const isStaffIssueReady = canIssueToStudents && staffIssueStudentValue.length > 0 && staffIssueBookValue.length > 0;
-  const visibleManagedUsers = useMemo(
-    () => {
-      const roleFiltered = users.filter((user) => {
-        if (canManageLibrarians) {
-          return true;
-        }
-
-        if (isFaculty) {
-          return user.roles.includes("STUDENT") || user.roles.includes("LIBRARIAN");
-        }
-
-        return user.roles.includes("STUDENT");
-      });
-
-      const query = userDirectoryQuery.trim().toLowerCase();
-      if (!query) {
-        return roleFiltered;
-      }
-
-      return roleFiltered.filter((user) => {
-        const nameMatch = user.fullName.toLowerCase().includes(query);
-        const departmentMatch = user.department.toLowerCase().includes(query);
-        const codeMatch = (user.rollNumber ?? "").toLowerCase().includes(query);
-        return nameMatch || departmentMatch || codeMatch;
-      });
-    },
-    [canManageLibrarians, isFaculty, userDirectoryQuery, users]
-  );
+  const returnBorrowerValue = returnBorrowerIdentifier.trim();
+  const returnBookValue = returnScanValue.trim();
+  const isStaffReturnReady = canIssueToStudents && returnBorrowerValue.length > 0 && returnBookValue.length > 0;
   const availableCatalogBooks = useMemo(() => groupBooksByTitle(books, true), [books]);
-  const visibleCatalogBooks = useMemo(() => availableCatalogBooks.slice(0, 4), [availableCatalogBooks]);
-  const groupedCatalogBooks = useMemo(() => groupBooksByTitle(catalogBooks), [catalogBooks]);
+  const visibleCatalogBooks = availableCatalogBooks;
   const myTotalFine = useMemo(
     () => myIssuedBooks.reduce((total, book) => total + book.fineAmount, 0),
     [myIssuedBooks]
@@ -267,13 +318,65 @@ export default function App() {
     : `${Math.floor(sessionRemainingSeconds / 60)}:${String(sessionRemainingSeconds % 60).padStart(2, "0")}`;
 
   useEffect(() => {
-    searchBooks("")
-      .then(setBooks)
-      .catch(() => setBooks([]));
-    listUsers()
-      .then(setUsers)
-      .catch(() => setUsers([]));
+    void refreshAvailableBooks("");
   }, []);
+
+  async function refreshAvailableBooks(searchQuery = query) {
+    try {
+      const result = await searchBooks(searchQuery, { availableOnly: true, page: 0, size: 10 });
+      setBooks(result.content);
+    } catch {
+      setBooks([]);
+    }
+  }
+
+  async function refreshCatalogBooks(
+    searchQuery = catalogQuery,
+    page = catalogPage,
+    size: PageSize = catalogPageSize
+  ) {
+    const result = await searchBooks(searchQuery, { page, size });
+    setCatalogBooks(result.content);
+    setCatalogPage(result.page);
+    setCatalogPageSize(result.size === 20 || result.size === 50 ? result.size : 10);
+    setCatalogTotalPages(result.totalPages);
+    setCatalogTotalElements(result.totalElements);
+  }
+
+  async function refreshUserDirectory(
+    actorUserId: string,
+    searchQuery = userDirectoryQuery,
+    page = userDirectoryPage,
+    size: PageSize = userDirectoryPageSize
+  ) {
+    const result = await listUsers(actorUserId, searchQuery, page, size);
+    setUsers(result.content);
+    setUserDirectoryPage(result.page);
+    setUserDirectoryPageSize(result.size === 20 || result.size === 50 ? result.size : 10);
+    setUserDirectoryTotalPages(result.totalPages);
+    setUserDirectoryTotalElements(result.totalElements);
+  }
+
+  async function refreshAuditLogs(
+    actorUserId: string,
+    page = auditPage,
+    size: PageSize = auditPageSize
+  ) {
+    const result = await listAuditEvents(
+      actorUserId,
+      auditFromDate,
+      auditToDate,
+      auditActionFilter || undefined,
+      page,
+      size
+    );
+    setAuditEvents(result.content);
+    setAuditPage(result.page);
+    setAuditPageSize(result.size === 20 || result.size === 50 ? result.size : 10);
+    setAuditTotalPages(result.totalPages);
+    setAuditTotalElements(result.totalElements);
+    setAuditLogsLoaded(true);
+  }
 
   useEffect(() => {
     if (!currentUser) {
@@ -351,15 +454,13 @@ export default function App() {
   }
 
   async function loadCurrentUserViews(user: LoginResponse) {
-    const [profile, issuedBooks, refreshedUsers] = await Promise.all([
+    const [profile, issuedBooks] = await Promise.all([
       getUserDetails(user.userId, user.userId),
-      listIssuedBooksForUser(user.userId, user.userId),
-      listUsers()
+      listIssuedBooksForUser(user.userId, user.userId)
     ]);
 
     setMyProfile(profile);
     setMyIssuedBooks(issuedBooks);
-    setUsers(refreshedUsers);
   }
 
   function clearLoginInputs() {
@@ -381,6 +482,9 @@ export default function App() {
     setScanValue("");
     setStaffBorrowerIdentifier("");
     setCheckedStudent(null);
+    setReturnBorrowerIdentifier("");
+    setReturnScanValue("");
+    setReturnResetFine(false);
   }
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
@@ -401,13 +505,14 @@ export default function App() {
 
   async function handleSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setBooks(await searchBooks(query));
+    await refreshAvailableBooks(query);
   }
 
   async function handleOpenCatalogWindow() {
     try {
       setCatalogQuery(query);
-      setCatalogBooks(await searchBooks(query));
+      setCatalogPage(0);
+      await refreshCatalogBooks(query, 0, catalogPageSize);
       setIsCatalogWindowOpen(true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to open catalog.");
@@ -417,7 +522,8 @@ export default function App() {
   async function handleCatalogWindowSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
-      setCatalogBooks(await searchBooks(catalogQuery));
+      setCatalogPage(0);
+      await refreshCatalogBooks(catalogQuery, 0, catalogPageSize);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Catalog search failed.");
     }
@@ -565,7 +671,7 @@ export default function App() {
         issueLoanDays
       );
       await loadCurrentUserViews(currentUser);
-      setBooks(await searchBooks(query));
+      await refreshAvailableBooks(query);
       setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName} for ${issueLoanDays} day(s).`);
       setScanResult({ ...selectedCopy, status: "ISSUED" });
     } catch (error) {
@@ -610,7 +716,7 @@ export default function App() {
       setStaffBorrowerIdentifier(borrowerIdentifier);
       setScanValue(bookScanValue);
       setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName} for ${issueLoanDays} day(s). Return by ${transaction.dueOn}.`);
-      setBooks(await searchBooks(query));
+      await refreshAvailableBooks(query);
       if (selectedUserDetails) {
         setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
       }
@@ -666,9 +772,44 @@ export default function App() {
         return next;
       });
       setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
-      setBooks(await searchBooks(query));
+      await refreshAvailableBooks(query);
       const fineMessage = transaction.fineAmount === 0 ? "No fine." : `Fine due: Rs ${transaction.fineAmount}.`;
       setMessage(`${transaction.bookTitle} returned. ${fineMessage}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Return failed.");
+    }
+  }
+
+  async function handleStaffReturnByScan() {
+    if (!currentUser) {
+      setMessage("Sign in as librarian or admin to return books.");
+      return;
+    }
+
+    if (!isStaffReturnReady) {
+      setMessage("Enter/scan the borrower roll/QR and the book QR/SSN before returning.");
+      return;
+    }
+
+    try {
+      const transaction = await returnBookByIdentifier(
+        currentUser.userId,
+        returnBorrowerIdentifierType,
+        returnBorrowerValue,
+        returnScanType,
+        returnBookValue,
+        returnResetFine
+      );
+      setReturnBorrowerIdentifier("");
+      setReturnBorrowerIdentifierType("ROLL_NUMBER");
+      setReturnScanValue("");
+      setReturnResetFine(false);
+      await refreshAvailableBooks(query);
+      if (selectedUserDetails?.id) {
+        setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
+      }
+      const fineMessage = transaction.fineAmount === 0 ? "No fine." : `Fine due: Rs ${transaction.fineAmount}.`;
+      setMessage(`${transaction.bookTitle} returned for ${transaction.borrowerName}. ${fineMessage}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Return failed.");
     }
@@ -720,7 +861,7 @@ export default function App() {
       };
       const user = await registerUser(payload, currentUser.userId);
 
-      setUsers(await listUsers());
+      if (currentUser) { await refreshUserDirectory(currentUser.userId, userDirectoryQuery, 0, userDirectoryPageSize); }
       setRegistrationForm({
         fullName: "",
         department: "",
@@ -743,7 +884,7 @@ export default function App() {
 
     try {
       await removeUser(user.id, currentUser.userId);
-      setUsers(await listUsers());
+      if (currentUser) { await refreshUserDirectory(currentUser.userId, userDirectoryQuery, 0, userDirectoryPageSize); }
       setMessage(`${user.fullName} removed from active users.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "User removal failed.");
@@ -836,7 +977,7 @@ export default function App() {
       };
       const updated = await updateUser(selectedUserDetails.id, payload, currentUser.userId);
       setSelectedUserDetails(updated);
-      setUsers(await listUsers());
+      if (currentUser) { await refreshUserDirectory(currentUser.userId, userDirectoryQuery, 0, userDirectoryPageSize); }
       setIsEditingUser(false);
       setUserEditForm((current) => ({ ...current, password: "" }));
       setMessage(`${updated.fullName} details updated.`);
@@ -893,7 +1034,7 @@ export default function App() {
 
     try {
       const book = await addBook(bookForm, currentUser.userId);
-      setBooks(await searchBooks(query));
+      await refreshAvailableBooks(query);
       setBookForm({
         ssnNumber: "",
         title: "",
@@ -945,8 +1086,8 @@ export default function App() {
     }
 
     try {
-      const matches = await searchBooks(ssn);
-      const book = matches.find((item) => item.ssnNumber === ssn) ?? matches[0];
+      const matches = await searchBooks(ssn, { page: 0, size: 10 });
+      const book = matches.content.find((item) => item.ssnNumber === ssn) ?? matches.content[0];
       if (!book) {
         setMessage("Book not found for the entered SSN.");
         return;
@@ -995,7 +1136,7 @@ export default function App() {
         },
         currentUser.userId
       );
-      setBooks(await searchBooks(query));
+      await refreshAvailableBooks(query);
       setMessage(`${book.title} updated.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to update book.");
@@ -1016,7 +1157,7 @@ export default function App() {
 
     try {
       await removeBookCopyByQrCode(qrCodeValue, currentUser.userId);
-      setBooks(await searchBooks(query));
+      await refreshAvailableBooks(query);
       setGeneratedBookQrs([]);
       setIsBookQrWindowOpen(false);
       setBookCopyQrValue("");
@@ -1040,7 +1181,7 @@ export default function App() {
 
     try {
       await removeBook(ssnNumber, currentUser.userId);
-      setBooks(await searchBooks(query));
+      await refreshAvailableBooks(query);
       setBookSsnToRemove("");
       setMessage(`Book with SSN ${ssnNumber} deleted from the database.`);
     } catch (error) {
@@ -1055,6 +1196,9 @@ export default function App() {
     }
 
     setAuditEvents([]);
+    setAuditPage(0);
+    setAuditTotalPages(0);
+    setAuditTotalElements(0);
     setAuditLogsLoaded(false);
     setIsAuditLogsOpen(true);
   }
@@ -1073,8 +1217,8 @@ export default function App() {
     }
 
     try {
-      setAuditEvents(await listAuditEvents(currentUser.userId, auditFromDate, auditToDate, auditActionFilter || undefined));
-      setAuditLogsLoaded(true);
+      setAuditPage(0);
+      await refreshAuditLogs(currentUser.userId, 0, auditPageSize);
     } catch (error) {
       setAuditLogsLoaded(false);
       setMessage(error instanceof Error ? error.message : "Failed to load audit logs.");
@@ -1084,7 +1228,39 @@ export default function App() {
   function handleCloseAuditLogs() {
     setIsAuditLogsOpen(false);
     setAuditEvents([]);
+    setAuditPage(0);
+    setAuditTotalPages(0);
+    setAuditTotalElements(0);
     setAuditLogsLoaded(false);
+  }
+
+  async function handleOpenUserDirectory() {
+    if (!currentUser) {
+      setMessage("Sign in to view the user directory.");
+      return;
+    }
+
+    try {
+      setUserDirectoryPage(0);
+      await refreshUserDirectory(currentUser.userId, userDirectoryQuery, 0, userDirectoryPageSize);
+      setIsUserDirectoryOpen(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to open user directory.");
+    }
+  }
+
+  async function handleUserDirectorySearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!currentUser) {
+      return;
+    }
+
+    try {
+      setUserDirectoryPage(0);
+      await refreshUserDirectory(currentUser.userId, userDirectoryQuery, 0, userDirectoryPageSize);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "User directory search failed.");
+    }
   }
 
   function handleLogout() {
@@ -1297,7 +1473,7 @@ export default function App() {
             <BookOpen size={22} />
             <div>
               <h2>Available Books</h2>
-              <p>Search books by title, author, or category.</p>
+              <p>Prefix search by title, author, category, or SSN.</p>
             </div>
           </div>
 
@@ -1327,8 +1503,8 @@ export default function App() {
             )}
           </div>
 
-          {availableCatalogBooks.length > 4 && (
-            <p className="list-note">Showing first 4 of {availableCatalogBooks.length} available books.</p>
+          {availableCatalogBooks.length > 0 && (
+            <p className="list-note">Showing available titles for the current search.</p>
           )}
 
           <button type="button" className="secondary-button directory-button" onClick={() => void handleOpenCatalogWindow()}>
@@ -1488,6 +1664,95 @@ export default function App() {
             </div>
           )}
         </article>
+
+        {canIssueToStudents && (
+          <article className="panel issue-panel">
+            <div className="panel-title">
+              <QrCode size={22} />
+              <div>
+                <h2>Return Book</h2>
+                <p>Scan borrower QR/roll number and book QR/SSN to return an issued copy.</p>
+              </div>
+            </div>
+
+            <div className="simple-scan-flow">
+              <div className="issue-steps-grid">
+                <div className="staff-issue-panel">
+                  <h3><span className="step-badge">1</span> Borrower</h3>
+                  <p>Enter roll number/staff code or scan borrower QR.</p>
+                  <div className="staff-issue-grid">
+                    <input
+                      placeholder="Roll number or staff code"
+                      value={returnBorrowerIdentifierType === "ROLL_NUMBER" ? returnBorrowerIdentifier : ""}
+                      onChange={(event) => {
+                        setReturnBorrowerIdentifierType("ROLL_NUMBER");
+                        setReturnBorrowerIdentifier(event.target.value);
+                      }}
+                    />
+                  </div>
+                  <QrScanner
+                    label="Scan Borrower QR"
+                    onDetected={(value) => {
+                      setReturnBorrowerIdentifierType("QR_CREDENTIAL");
+                      setReturnBorrowerIdentifier(value);
+                    }}
+                  />
+                  {returnBorrowerIdentifierType === "QR_CREDENTIAL" && returnBorrowerIdentifier && (
+                    <p className="scan-captured-note">Borrower QR captured from scanner.</p>
+                  )}
+                </div>
+
+                <div className="staff-issue-panel">
+                  <h3><span className="step-badge">2</span> Book</h3>
+                  <p>Scan book QR or enter book QR/RFID/SSN.</p>
+                  <form
+                    className="scan-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void handleStaffReturnByScan();
+                    }}
+                  >
+                    <select value={returnScanType} onChange={(event) => setReturnScanType(event.target.value as ScanType)}>
+                      <option value="QR">Book QR</option>
+                      <option value="RFID">RFID Tag</option>
+                      <option value="SSN">SSN</option>
+                    </select>
+                    <input
+                      placeholder={returnScanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}
+                      value={returnScanValue}
+                      onChange={(event) => setReturnScanValue(event.target.value)}
+                    />
+                  </form>
+                  <QrScanner
+                    label="Scan Book QR"
+                    onDetected={(value) => {
+                      setReturnScanType("QR");
+                      setReturnScanValue(value);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <label className="inline-checkbox">
+                <input
+                  type="checkbox"
+                  checked={returnResetFine}
+                  onChange={(event) => setReturnResetFine(event.target.checked)}
+                />
+                Reset fine (Rs 0)
+              </label>
+
+              <div className="action-row issue-action-row">
+                <button type="button" className="danger-button" disabled={!isStaffReturnReady} onClick={() => void handleStaffReturnByScan()}>
+                  Return Book
+                </button>
+              </div>
+              {!isStaffReturnReady && (
+                <p className="issue-hint">Enter or scan both the borrower and the book identifiers to return.</p>
+              )}
+            </div>
+          </article>
+        )}
       </section>
 
       {canShowManagement && (
@@ -1550,7 +1815,7 @@ export default function App() {
           </form>
 
           {canViewUserDirectory && (
-            <button type="button" className="secondary-button directory-button" onClick={() => setIsUserDirectoryOpen(true)}>
+            <button type="button" className="secondary-button directory-button" onClick={() => void handleOpenUserDirectory()}>
               Open {canManageLibrarians ? "User Directory" : isFaculty ? "Student And Librarian Directory" : "Student Directory"}
             </button>
           )}
@@ -1571,7 +1836,7 @@ export default function App() {
                 <p>View student details and issued books without circulation actions.</p>
               </div>
             </div>
-            <button type="button" className="secondary-button directory-button" onClick={() => setIsUserDirectoryOpen(true)}>
+            <button type="button" className="secondary-button directory-button" onClick={() => void handleOpenUserDirectory()}>
               Open Student And Librarian Directory
             </button>
           </article>
@@ -1910,7 +2175,7 @@ export default function App() {
             <div className="modal-header">
               <div>
                 <h2>Full Catalogue</h2>
-                <p>Search and view all catalog entries.</p>
+                <p>Prefix search by title, author, category, or SSN. Exact SSN matches are instant.</p>
               </div>
               <button type="button" className="secondary-button" onClick={() => setIsCatalogWindowOpen(false)}>
                 Close
@@ -1928,15 +2193,15 @@ export default function App() {
             </form>
 
             <div className="book-list">
-              {groupedCatalogBooks.length === 0 ? (
+              {catalogBooks.length === 0 ? (
                 <div className="empty-state">No books found.</div>
               ) : (
-                groupedCatalogBooks.map((book) => (
-                  <div className="book-row" key={book.title.toLowerCase()}>
+                catalogBooks.map((book) => (
+                  <div className="book-row" key={book.ssnNumber}>
                     <div>
                       <strong>{book.title}</strong>
                       <span>
-                        {[book.authors.join(" / "), book.categories.join(" / ")].filter(Boolean).join(" · ")}
+                        {[book.author, book.category].filter(Boolean).join(" · ")}
                       </span>
                     </div>
                     <div className="book-actions">
@@ -1946,6 +2211,25 @@ export default function App() {
                 ))
               )}
             </div>
+            <PaginationControls
+              page={catalogPage}
+              totalPages={catalogTotalPages}
+              totalElements={catalogTotalElements}
+              pageSize={catalogPageSize}
+              label="books"
+              onPageChange={(nextPage) => {
+                void refreshCatalogBooks(catalogQuery, nextPage, catalogPageSize).catch((error) =>
+                  setMessage(error instanceof Error ? error.message : "Catalog page failed.")
+                );
+              }}
+              onPageSizeChange={(size) => {
+                setCatalogPageSize(size);
+                setCatalogPage(0);
+                void refreshCatalogBooks(catalogQuery, 0, size).catch((error) =>
+                  setMessage(error instanceof Error ? error.message : "Catalog page failed.")
+                );
+              }}
+            />
           </div>
         </div>
       )}
@@ -2022,23 +2306,19 @@ export default function App() {
             <div className="modal-content-grid">
               <div className="user-list">
                 <h3>{canManageLibrarians ? "Registered Users" : isFaculty ? "Students And Librarians" : "Students"}</h3>
-                <form
-                  className="inline-form"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                  }}
-                >
+                <form className="inline-form" onSubmit={(event) => void handleUserDirectorySearch(event)}>
                   <Search size={18} />
                   <input
                     placeholder="Search by name, roll number, or staff code"
                     value={userDirectoryQuery}
                     onChange={(event) => setUserDirectoryQuery(event.target.value)}
                   />
+                  <button type="submit">Search</button>
                 </form>
-                {visibleManagedUsers.length === 0 ? (
+                {users.length === 0 ? (
                   <p>{userDirectoryQuery.trim() ? "No users match this search." : canManageLibrarians ? "No registered users found." : "No users found."}</p>
                 ) : (
-                  visibleManagedUsers.map((user) => (
+                  users.map((user) => (
                     <div className="compact-row" key={user.id}>
                       <div>
                         <strong>{user.fullName}</strong>
@@ -2072,6 +2352,31 @@ export default function App() {
                     </div>
                   ))
                 )}
+                <PaginationControls
+                  page={userDirectoryPage}
+                  totalPages={userDirectoryTotalPages}
+                  totalElements={userDirectoryTotalElements}
+                  pageSize={userDirectoryPageSize}
+                  label="users"
+                  onPageChange={(nextPage) => {
+                    if (!currentUser) {
+                      return;
+                    }
+                    void refreshUserDirectory(currentUser.userId, userDirectoryQuery, nextPage, userDirectoryPageSize).catch((error) =>
+                      setMessage(error instanceof Error ? error.message : "User directory page failed.")
+                    );
+                  }}
+                  onPageSizeChange={(size) => {
+                    if (!currentUser) {
+                      return;
+                    }
+                    setUserDirectoryPageSize(size);
+                    setUserDirectoryPage(0);
+                    void refreshUserDirectory(currentUser.userId, userDirectoryQuery, 0, size).catch((error) =>
+                      setMessage(error instanceof Error ? error.message : "User directory page failed.")
+                    );
+                  }}
+                />
               </div>
 
               <div>
@@ -2384,6 +2689,33 @@ export default function App() {
                 ))
               )}
             </div>
+            {auditLogsLoaded && (
+              <PaginationControls
+                page={auditPage}
+                totalPages={auditTotalPages}
+                totalElements={auditTotalElements}
+                pageSize={auditPageSize}
+                label="events"
+                onPageChange={(nextPage) => {
+                  if (!currentUser) {
+                    return;
+                  }
+                  void refreshAuditLogs(currentUser.userId, nextPage, auditPageSize).catch((error) =>
+                    setMessage(error instanceof Error ? error.message : "Audit page failed.")
+                  );
+                }}
+                onPageSizeChange={(size) => {
+                  if (!currentUser) {
+                    return;
+                  }
+                  setAuditPageSize(size);
+                  setAuditPage(0);
+                  void refreshAuditLogs(currentUser.userId, 0, size).catch((error) =>
+                    setMessage(error instanceof Error ? error.message : "Audit page failed.")
+                  );
+                }}
+              />
+            )}
           </div>
         </div>
       )}

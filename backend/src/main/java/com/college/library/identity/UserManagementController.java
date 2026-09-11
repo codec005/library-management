@@ -1,7 +1,7 @@
 package com.college.library.identity;
 
+import com.college.library.common.PageResponse;
 import jakarta.validation.Valid;
-import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -28,8 +28,13 @@ public class UserManagementController {
     }
 
     @GetMapping
-    ResponseEntity<List<UserSummary>> listUsers() {
-        return ResponseEntity.ok(userManagementUseCase.listUsers());
+    ResponseEntity<PageResponse<UserSummary>> listUsers(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @RequestParam(defaultValue = "") String query,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size
+    ) {
+        return ResponseEntity.ok(userManagementUseCase.listUsers(actorUserId, query, page, size));
     }
 
     @GetMapping("/by-identifier")

@@ -8,13 +8,20 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
+import jakarta.persistence.Index;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "users")
+@Table(
+    name = "users",
+    indexes = {
+        @Index(name = "idx_users_full_name", columnList = "fullName"),
+        @Index(name = "idx_users_active", columnList = "active")
+    }
+)
 public class UserAccount extends BaseEntity {
 
     @Column(nullable = false)

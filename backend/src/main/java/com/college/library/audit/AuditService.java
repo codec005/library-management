@@ -1,5 +1,6 @@
 package com.college.library.audit;
 
+import com.college.library.common.PageResponse;
 import com.college.library.identity.IdentifierType;
 import com.college.library.identity.UserAccount;
 import com.college.library.identity.UserAccountRepository;
@@ -12,6 +13,7 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,7 +42,14 @@ public class AuditService implements AuditLogger, AuditUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public List<AuditEventResponse> listEvents(UUID actorUserId, LocalDate fromDate, LocalDate toDate, AuditAction action) {
+    public PageResponse<AuditEventResponse> listEvents(
+        UUID actorUserId,
+        LocalDate fromDate,
+        LocalDate toDate,
+        AuditAction action,
+        int page,
+        int size
+    ) {
         findAdmin(actorUserId);
 
         LocalDate from = fromDate == null ? LocalDate.now().minusDays(7) : fromDate;
@@ -53,14 +62,13 @@ public class AuditService implements AuditLogger, AuditUseCase {
         ZoneId zone = ZoneId.systemDefault();
         Instant fromInclusive = from.atStartOfDay(zone).toInstant();
         Instant toExclusive = to.plusDays(1).atStartOfDay(zone).toInstant();
+        var pageable = PageResponse.pageable(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-        List<AuditEvent> events = action == null
-            ? auditEventRepository.findByCreatedAtBetweenOrderByCreatedAtDesc(fromInclusive, toExclusive)
-            : auditEventRepository.findByActionAndCreatedAtBetweenOrderByCreatedAtDesc(action, fromInclusive, toExclusive);
+        var events = action == null
+            ? auditEventRepository.findByCreatedAtBetween(fromInclusive, toExclusive, pageable)
+            : auditEventRepository.findByActionAndCreatedAtBetween(action, fromInclusive, toExclusive, pageable);
 
-        return events.stream()
-            .map(this::toResponse)
-            .toList();
+        return PageResponse.from(events.map(this::toResponse));
     }
 
     private AuditEventResponse toResponse(AuditEvent event) {

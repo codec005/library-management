@@ -4,13 +4,21 @@ import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "books")
+@Table(
+    name = "books",
+    indexes = {
+        @Index(name = "idx_books_title", columnList = "title"),
+        @Index(name = "idx_books_author", columnList = "author"),
+        @Index(name = "idx_books_category", columnList = "category")
+    }
+)
 public class Book {
 
     @Id

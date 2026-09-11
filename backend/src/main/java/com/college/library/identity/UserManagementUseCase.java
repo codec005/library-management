@@ -1,6 +1,6 @@
 package com.college.library.identity;
 
-import java.util.List;
+import com.college.library.common.PageResponse;
 import java.util.UUID;
 
 public interface UserManagementUseCase {
@@ -21,5 +21,5 @@ public interface UserManagementUseCase {
 
     UserDetailsResponse getStudentDetailsByIdentifier(IdentifierType identifierType, String identifier, UUID actorUserId);
 
-    List<UserSummary> listUsers();
+    PageResponse<UserSummary> listUsers(UUID actorUserId, String query, int page, int size);
 }

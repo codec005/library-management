@@ -6,12 +6,18 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "book_copies")
+@Table(
+    name = "book_copies",
+    indexes = {
+        @Index(name = "idx_book_copies_book_status", columnList = "book_id, status")
+    }
+)
 public class BookCopy extends BaseEntity {
 
     @Column(nullable = false, unique = true)
