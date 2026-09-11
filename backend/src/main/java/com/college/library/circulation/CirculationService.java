@@ -124,7 +124,7 @@ public class CirculationService implements CirculationUseCase {
         CirculationTransaction savedTransaction = circulationTransactionRepository.save(transaction);
         String auditDetails = copy.getAccessionNumber()
             + " to "
-            + borrower.getFullName()
+            + borrowerLabel(borrower)
             + " for "
             + loanDays
             + " days";
@@ -159,14 +159,7 @@ public class CirculationService implements CirculationUseCase {
 
         transaction.markReturned(LocalDate.now(), resetFine);
         UserAccount borrower = transaction.getBorrower();
-        String borrowerCode = userIdentifierRepository
-            .findByUserAndType(borrower, IdentifierType.ROLL_NUMBER)
-            .map(UserIdentifier::getValue)
-            .orElse(null);
-        String borrowerLabel = borrowerCode == null || borrowerCode.isBlank()
-            ? borrower.getFullName()
-            : borrower.getFullName() + " (" + borrowerCode + ")";
-        String auditDetails = borrowerLabel + " · " + copy.getAccessionNumber()
+        String auditDetails = borrowerLabel(borrower) + " · " + copy.getAccessionNumber()
             + (resetFine ? " (fine reset)" : "");
         auditLogger.record(
             AuditAction.BOOK_RETURN,
@@ -204,15 +197,8 @@ public class CirculationService implements CirculationUseCase {
 
         transaction.renew(days);
         UserAccount borrower = transaction.getBorrower();
-        String borrowerCode = userIdentifierRepository
-            .findByUserAndType(borrower, IdentifierType.ROLL_NUMBER)
-            .map(UserIdentifier::getValue)
-            .orElse(null);
-        String borrowerLabel = borrowerCode == null || borrowerCode.isBlank()
-            ? borrower.getFullName()
-            : borrower.getFullName() + " (" + borrowerCode + ")";
         String accessionNumber = transaction.getBookCopy().getAccessionNumber();
-        String auditDetails = borrowerLabel + " · " + accessionNumber + " · " + days + " days";
+        String auditDetails = borrowerLabel(borrower) + " · " + accessionNumber + " · " + days + " days";
         auditLogger.record(
             AuditAction.BOOK_RENEW,
             actor.getId(),
@@ -221,6 +207,17 @@ public class CirculationService implements CirculationUseCase {
             auditDetails
         );
         return CirculationResponse.from(transaction);
+    }
+
+    private String borrowerLabel(UserAccount borrower) {
+        String borrowerCode = userIdentifierRepository
+            .findByUserAndType(borrower, IdentifierType.ROLL_NUMBER)
+            .map(UserIdentifier::getValue)
+            .orElse(null);
+        if (borrowerCode == null || borrowerCode.isBlank()) {
+            return borrower.getFullName();
+        }
+        return borrower.getFullName() + " (" + borrowerCode + ")";
     }
 
     @Override
