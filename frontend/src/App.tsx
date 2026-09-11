@@ -46,6 +46,48 @@ import {
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 const COPYRIGHT_YEAR = new Date().getFullYear();
 
+type GroupedCatalogBook = {
+  title: string;
+  authors: string[];
+  categories: string[];
+  availableCopies: number;
+  totalCopies: number;
+};
+
+function groupBooksByTitle(books: BookSummary[], onlyAvailable = false): GroupedCatalogBook[] {
+  const grouped = new Map<string, GroupedCatalogBook>();
+
+  for (const book of books) {
+    if (onlyAvailable && book.availableCopies <= 0) {
+      continue;
+    }
+
+    const key = book.title.trim().toLowerCase();
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, {
+        title: book.title.trim(),
+        authors: book.author ? [book.author] : [],
+        categories: book.category ? [book.category] : [],
+        availableCopies: book.availableCopies,
+        totalCopies: book.totalCopies
+      });
+      continue;
+    }
+
+    existing.availableCopies += book.availableCopies;
+    existing.totalCopies += book.totalCopies;
+    if (book.author && !existing.authors.some((author) => author.toLowerCase() === book.author.toLowerCase())) {
+      existing.authors.push(book.author);
+    }
+    if (book.category && !existing.categories.some((category) => category.toLowerCase() === book.category.toLowerCase())) {
+      existing.categories.push(book.category);
+    }
+  }
+
+  return Array.from(grouped.values()).sort((left, right) => left.title.localeCompare(right.title));
+}
+
 const AUDIT_ACTION_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "", label: "All types" },
   { value: "PASSWORD_LOGIN", label: "Password login" },
@@ -209,49 +251,9 @@ export default function App() {
     },
     [canManageLibrarians, isFaculty, userDirectoryQuery, users]
   );
-  const availableCatalogBooks = useMemo(() => {
-    const grouped = new Map<
-      string,
-      {
-        title: string;
-        authors: string[];
-        categories: string[];
-        availableCopies: number;
-        totalCopies: number;
-      }
-    >();
-
-    for (const book of books) {
-      if (book.availableCopies <= 0) {
-        continue;
-      }
-
-      const key = book.title.trim().toLowerCase();
-      const existing = grouped.get(key);
-      if (!existing) {
-        grouped.set(key, {
-          title: book.title.trim(),
-          authors: book.author ? [book.author] : [],
-          categories: book.category ? [book.category] : [],
-          availableCopies: book.availableCopies,
-          totalCopies: book.totalCopies
-        });
-        continue;
-      }
-
-      existing.availableCopies += book.availableCopies;
-      existing.totalCopies += book.totalCopies;
-      if (book.author && !existing.authors.some((author) => author.toLowerCase() === book.author.toLowerCase())) {
-        existing.authors.push(book.author);
-      }
-      if (book.category && !existing.categories.some((category) => category.toLowerCase() === book.category.toLowerCase())) {
-        existing.categories.push(book.category);
-      }
-    }
-
-    return Array.from(grouped.values()).sort((left, right) => left.title.localeCompare(right.title));
-  }, [books]);
+  const availableCatalogBooks = useMemo(() => groupBooksByTitle(books, true), [books]);
   const visibleCatalogBooks = useMemo(() => availableCatalogBooks.slice(0, 4), [availableCatalogBooks]);
+  const groupedCatalogBooks = useMemo(() => groupBooksByTitle(catalogBooks), [catalogBooks]);
   const myTotalFine = useMemo(
     () => myIssuedBooks.reduce((total, book) => total + book.fineAmount, 0),
     [myIssuedBooks]
@@ -1926,14 +1928,16 @@ export default function App() {
             </form>
 
             <div className="book-list">
-              {catalogBooks.length === 0 ? (
+              {groupedCatalogBooks.length === 0 ? (
                 <div className="empty-state">No books found.</div>
               ) : (
-                catalogBooks.map((book) => (
-                  <div className="book-row" key={book.ssnNumber}>
+                groupedCatalogBooks.map((book) => (
+                  <div className="book-row" key={book.title.toLowerCase()}>
                     <div>
                       <strong>{book.title}</strong>
-                      <span>SSN {book.ssnNumber} · {book.author} · {book.category}</span>
+                      <span>
+                        {[book.authors.join(" / "), book.categories.join(" / ")].filter(Boolean).join(" · ")}
+                      </span>
                     </div>
                     <div className="book-actions">
                       <span className="availability">{book.availableCopies}/{book.totalCopies} available</span>
