@@ -37,6 +37,7 @@ import {
   registerUser,
   getBookCopyByQrCode,
   getBookCopyBySsn,
+  getCatalogCopyStats,
   removeBook,
   removeBookCopyByQrCode,
   removeUser,
@@ -157,6 +158,8 @@ export default function App() {
   const [logoUrl, setLogoUrl] = useState(() => localStorage.getItem("collegeLogoUrl") ?? "");
   const [collegeName, setCollegeName] = useState(() => localStorage.getItem("collegeName") ?? "");
   const [bookCategories, setBookCategories] = useState<string[]>([]);
+  const [availableCopyCount, setAvailableCopyCount] = useState(0);
+  const [issuedCopyCount, setIssuedCopyCount] = useState(0);
   const [isCatalogWindowOpen, setIsCatalogWindowOpen] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalogCategory, setCatalogCategory] = useState("");
@@ -333,9 +336,21 @@ export default function App() {
     listBookCategories()
       .then(setBookCategories)
       .catch(() => setBookCategories([]));
+    void refreshCopyStats();
   }, []);
 
+  async function refreshCopyStats() {
+    try {
+      const stats = await getCatalogCopyStats();
+      setAvailableCopyCount(stats.availableCopies);
+      setIssuedCopyCount(stats.issuedCopies);
+    } catch {
+      // Keep the last known counts if the stats request fails.
+    }
+  }
+
   async function refreshCatalogIfOpen() {
+    void refreshCopyStats();
     if (!isCatalogWindowOpen) {
       return;
     }
@@ -1911,6 +1926,10 @@ export default function App() {
               <p>Browse every title and physical copy in the full catalogue.</p>
             </div>
           </div>
+
+          <p className="list-note copy-stats-note">
+            Available copies: {availableCopyCount} · Issued copies: {issuedCopyCount}
+          </p>
 
           <button type="button" className="secondary-button directory-button" onClick={() => void handleOpenCatalogWindow()}>
             Open Full Catalogue

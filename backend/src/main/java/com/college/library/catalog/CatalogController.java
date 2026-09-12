@@ -78,6 +78,11 @@ public class CatalogController {
         return ResponseEntity.ok(catalogService.listCopiesByTitle(title));
     }
 
+    @GetMapping("/copies/stats")
+    ResponseEntity<CatalogCopyStats> getCopyStats() {
+        return ResponseEntity.ok(catalogService.getCopyStats());
+    }
+
     @GetMapping("/categories")
     ResponseEntity<List<String>> listCategories() {
         return ResponseEntity.ok(catalogService.listCategories());

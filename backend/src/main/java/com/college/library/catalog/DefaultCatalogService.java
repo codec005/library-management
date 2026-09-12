@@ -154,6 +154,15 @@ public class DefaultCatalogService implements CatalogService {
             .toList();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public CatalogCopyStats getCopyStats() {
+        return new CatalogCopyStats(
+            bookCopyRepository.countByStatus(BookCopyStatus.AVAILABLE),
+            bookCopyRepository.countByStatus(BookCopyStatus.ISSUED)
+        );
+    }
+
     private GroupedBookSummary toGroupedBookSummary(Object[] row) {
         return new GroupedBookSummary(
             stringValue(row[0]),

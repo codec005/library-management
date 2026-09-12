@@ -302,6 +302,15 @@ export function listCopiesByTitle(title: string) {
   return request<BookCopySummary[]>(`/api/catalog/copies/by-title?title=${encodeURIComponent(title)}`);
 }
 
+export interface CatalogCopyStats {
+  availableCopies: number;
+  issuedCopies: number;
+}
+
+export function getCatalogCopyStats() {
+  return request<CatalogCopyStats>("/api/catalog/copies/stats");
+}
+
 export function listBookCategories() {
   return request<string[]>("/api/catalog/categories");
 }

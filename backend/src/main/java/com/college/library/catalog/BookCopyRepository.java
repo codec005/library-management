@@ -35,6 +35,8 @@ public interface BookCopyRepository extends JpaRepository<BookCopy, UUID> {
 
     long countByBook(Book book);
 
+    long countByStatus(BookCopyStatus status);
+
     @Query(
         """
             select copy from BookCopy copy
