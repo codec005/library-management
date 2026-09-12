@@ -73,6 +73,11 @@ public class CatalogController {
         return ResponseEntity.ok(catalogService.listBooksByTitle(title));
     }
 
+    @GetMapping("/copies/by-title")
+    ResponseEntity<List<BookCopySummary>> listCopiesByTitle(@RequestParam String title) {
+        return ResponseEntity.ok(catalogService.listCopiesByTitle(title));
+    }
+
     @GetMapping("/categories")
     ResponseEntity<List<String>> listCategories() {
         return ResponseEntity.ok(catalogService.listCategories());

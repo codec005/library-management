@@ -1,5 +1,8 @@
 package com.college.library.catalog;
 
+import java.util.Objects;
+import java.util.stream.Collectors;
+
 public record BookSummary(
     String ssnNumber,
     String title,
@@ -9,7 +12,8 @@ public record BookSummary(
     long finePerDay,
     int loanPeriodDays,
     long totalCopies,
-    long availableCopies
+    long availableCopies,
+    String shelfLocation
 ) {
     static BookSummary from(Book book) {
         long activeCopies = book.getCopies().stream()
@@ -18,6 +22,14 @@ public record BookSummary(
         long availableCopies = book.getCopies().stream()
             .filter(copy -> copy.getStatus() == BookCopyStatus.AVAILABLE)
             .count();
+        String shelfLocation = book.getCopies().stream()
+            .filter(copy -> copy.getStatus() != BookCopyStatus.REMOVED)
+            .map(BookCopy::getShelfLocation)
+            .filter(Objects::nonNull)
+            .map(String::trim)
+            .filter(value -> !value.isEmpty())
+            .distinct()
+            .collect(Collectors.joining(" / "));
 
         return new BookSummary(
             book.getSsnNumber(),
@@ -28,7 +40,8 @@ public record BookSummary(
             book.getFinePerDay(),
             book.getLoanPeriodDays(),
             activeCopies,
-            availableCopies
+            availableCopies,
+            shelfLocation.isEmpty() ? null : shelfLocation
         );
     }
 }

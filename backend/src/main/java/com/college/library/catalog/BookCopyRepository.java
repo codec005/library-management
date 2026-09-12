@@ -1,6 +1,7 @@
 package com.college.library.catalog;
 
 import jakarta.persistence.LockModeType;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -33,4 +34,15 @@ public interface BookCopyRepository extends JpaRepository<BookCopy, UUID> {
     Optional<BookCopy> findBySsnNumberForUpdate(@Param("ssnNumber") String ssnNumber);
 
     long countByBook(Book book);
+
+    @Query(
+        """
+            select copy from BookCopy copy
+            join fetch copy.book book
+            where lower(trim(book.title)) = lower(trim(:title))
+              and copy.status <> com.college.library.catalog.BookCopyStatus.REMOVED
+            order by copy.ssnNumber asc
+            """
+    )
+    List<BookCopy> findActiveCopiesByTitle(@Param("title") String title);
 }

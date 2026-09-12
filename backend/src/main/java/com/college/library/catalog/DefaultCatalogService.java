@@ -142,6 +142,18 @@ public class DefaultCatalogService implements CatalogService {
             .toList();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<BookCopySummary> listCopiesByTitle(String title) {
+        String cleanedTitle = cleanValue(title);
+        if (cleanedTitle.isEmpty()) {
+            return List.of();
+        }
+        return bookCopyRepository.findActiveCopiesByTitle(cleanedTitle).stream()
+            .map(BookCopySummary::from)
+            .toList();
+    }
+
     private GroupedBookSummary toGroupedBookSummary(Object[] row) {
         return new GroupedBookSummary(
             stringValue(row[0]),

@@ -84,6 +84,7 @@ export interface BookSummary {
   loanPeriodDays: number;
   totalCopies: number;
   availableCopies: number;
+  shelfLocation?: string | null;
 }
 
 export interface GroupedBookSummary {
@@ -112,6 +113,11 @@ export interface BookCopySummary {
   ssnNumber: string;
   bookSsnNumber: string;
   title: string;
+  author: string;
+  publisher?: string | null;
+  category: string;
+  finePerDay: number;
+  loanPeriodDays: number;
   accessionNumber: string;
   qrCodeValue: string;
   shelfLocation: string;
@@ -286,6 +292,10 @@ export function searchGroupedBooks(
 
 export function listBooksByTitle(title: string) {
   return request<BookSummary[]>(`/api/catalog/books/by-title?title=${encodeURIComponent(title)}`);
+}
+
+export function listCopiesByTitle(title: string) {
+  return request<BookCopySummary[]>(`/api/catalog/copies/by-title?title=${encodeURIComponent(title)}`);
 }
 
 export function listBookCategories() {

@@ -47,7 +47,7 @@ import {
   scanLogin,
   searchBooks,
   searchGroupedBooks,
-  listBooksByTitle,
+  listCopiesByTitle,
   updateUser
 } from "./api";
 
@@ -65,7 +65,7 @@ type GroupedCatalogBook = {
   availableCopies: number;
   totalCopies: number;
   editionCount: number;
-  editions: BookSummary[];
+  copies: BookCopySummary[];
 };
 
 function groupBooksByTitle(books: BookSummary[], onlyAvailable = false): GroupedCatalogBook[] {
@@ -87,7 +87,7 @@ function groupBooksByTitle(books: BookSummary[], onlyAvailable = false): Grouped
         availableCopies: book.availableCopies,
         totalCopies: book.totalCopies,
         editionCount: 1,
-        editions: [book]
+        copies: []
       });
       continue;
     }
@@ -95,7 +95,6 @@ function groupBooksByTitle(books: BookSummary[], onlyAvailable = false): Grouped
     existing.availableCopies += book.availableCopies;
     existing.totalCopies += book.totalCopies;
     existing.editionCount += 1;
-    existing.editions.push(book);
   }
 
   return Array.from(grouped.values()).sort((left, right) => left.title.localeCompare(right.title));
@@ -427,19 +426,19 @@ export default function App() {
       availableCopies: book.availableCopies,
       totalCopies: book.totalCopies,
       editionCount: book.editionCount,
-      editions: []
+      copies: []
     });
     try {
-      const editions = await listBooksByTitle(book.title);
+      const copies = await listCopiesByTitle(book.title);
       setSelectedTitleGroup({
         title: book.title,
-        author: book.author || editions[0]?.author || "",
-        publisher: book.publisher ?? editions[0]?.publisher ?? "",
-        category: book.category || editions[0]?.category || "",
+        author: book.author || copies[0]?.author || "",
+        publisher: book.publisher ?? copies[0]?.publisher ?? "",
+        category: book.category || copies[0]?.category || "",
         availableCopies: book.availableCopies,
         totalCopies: book.totalCopies,
         editionCount: book.editionCount,
-        editions
+        copies
       });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to load title details.");
@@ -1293,6 +1292,52 @@ export default function App() {
 
   function handleDownloadBookQr(copy: BookCopySummary & { dataUrl: string }) {
     downloadDataUrl(copy.dataUrl, `${copy.ssnNumber.toLowerCase().replace(/[^a-z0-9-]+/g, "-")}-book-qr.png`);
+  }
+
+  async function handleGenerateQrForCatalogSsn(ssnNumber: string, bookTitle: string) {
+    if (!currentUser) {
+      setMessage("Sign in as librarian or admin to generate book QR codes.");
+      return;
+    }
+
+    try {
+      const copies = await listBookCopies(ssnNumber, currentUser.userId);
+      if (copies.length === 0) {
+        setMessage(`No physical copies found for ${bookTitle} (${ssnNumber}).`);
+        return;
+      }
+
+      const qrImages = await Promise.all(
+        copies.map(async (copy) => ({
+          ...copy,
+          dataUrl: await QRCode.toDataURL(copy.qrCodeValue, {
+            margin: 2,
+            width: 220
+          })
+        }))
+      );
+      setGeneratedBookQrs(qrImages);
+      setIsBookQrWindowOpen(true);
+      setMessage(`Generated ${qrImages.length} QR code(s) for ${bookTitle}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to generate book QR codes.");
+    }
+  }
+
+  async function handleSaveQrForCopy(copy: BookCopySummary) {
+    try {
+      const dataUrl = await QRCode.toDataURL(copy.qrCodeValue, {
+        margin: 2,
+        width: 220
+      });
+      downloadDataUrl(
+        dataUrl,
+        `${copy.ssnNumber.toLowerCase().replace(/[^a-z0-9-]+/g, "-")}-book-qr.png`
+      );
+      setMessage(`QR saved for copy ${copy.ssnNumber}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save book QR code.");
+    }
   }
 
   function downloadDataUrl(dataUrl: string, fileName: string) {
@@ -2950,9 +2995,10 @@ export default function App() {
               <div>
                 <h2>{selectedTitleGroup.title}</h2>
                 <p>
-                  {selectedTitleGroup.editionCount} catalog entr
-                  {selectedTitleGroup.editionCount === 1 ? "y" : "ies"} ·{" "}
-                  {selectedTitleGroup.availableCopies}/{selectedTitleGroup.totalCopies} copies available
+                  {selectedTitleGroup.copies.length > 0
+                    ? selectedTitleGroup.copies.length
+                    : selectedTitleGroup.totalCopies}{" "}
+                  physical copies · {selectedTitleGroup.availableCopies}/{selectedTitleGroup.totalCopies} available
                 </p>
               </div>
               <button type="button" className="secondary-button" onClick={() => setSelectedTitleGroup(null)}>
@@ -2973,46 +3019,77 @@ export default function App() {
             </div>
 
             <div className="book-list title-edition-list">
-              {titleDetailsLoading && selectedTitleGroup.editions.length === 0 ? (
-                <div className="empty-state">Loading catalog entries…</div>
+              {titleDetailsLoading && selectedTitleGroup.copies.length === 0 ? (
+                <div className="empty-state">Loading physical copies…</div>
+              ) : selectedTitleGroup.copies.length === 0 ? (
+                <div className="empty-state">No physical copies found for this title.</div>
               ) : (
-                selectedTitleGroup.editions.map((edition) => (
-                <div className="book-row title-edition-row" key={edition.ssnNumber}>
+                selectedTitleGroup.copies.map((copy) => (
+                <div className="book-row title-edition-row" key={copy.copyId}>
                   <div>
-                    <strong>SSN {edition.ssnNumber}</strong>
+                    <strong>SSN {copy.ssnNumber}</strong>
                     <span>
-                      {[edition.author, edition.publisher, edition.category].filter(Boolean).join(" · ")}
+                      {[copy.author, copy.publisher, copy.category, copy.shelfLocation]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </span>
                   </div>
                   <div className="scan-result title-edition-details">
                     <dl>
                       <div>
                         <dt>Author</dt>
-                        <dd>{edition.author || "—"}</dd>
+                        <dd>{copy.author || "—"}</dd>
                       </div>
                       <div>
                         <dt>Publisher</dt>
-                        <dd>{edition.publisher || "—"}</dd>
+                        <dd>{copy.publisher || "—"}</dd>
                       </div>
                       <div>
                         <dt>Category</dt>
-                        <dd>{edition.category || "—"}</dd>
+                        <dd>{copy.category || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Shelf</dt>
+                        <dd>{copy.shelfLocation || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Accession</dt>
+                        <dd>{copy.accessionNumber || "—"}</dd>
+                      </div>
+                      {canManageBooks && (
+                        <div>
+                          <dt>QR</dt>
+                          <dd>{copy.qrCodeValue || "—"}</dd>
+                        </div>
+                      )}
+                      <div>
+                        <dt>Status</dt>
+                        <dd>{copy.status}</dd>
                       </div>
                       <div>
                         <dt>Fine / day</dt>
-                        <dd>{edition.finePerDay}</dd>
+                        <dd>{copy.finePerDay}</dd>
                       </div>
                       <div>
                         <dt>Loan days</dt>
-                        <dd>{edition.loanPeriodDays}</dd>
+                        <dd>{copy.loanPeriodDays}</dd>
                       </div>
                       <div>
-                        <dt>Availability</dt>
-                        <dd>
-                          {edition.availableCopies}/{edition.totalCopies}
-                        </dd>
+                        <dt>Catalog SSN</dt>
+                        <dd>{copy.bookSsnNumber}</dd>
                       </div>
                     </dl>
+                    {canManageBooks && (
+                      <div className="action-row" style={{ marginTop: "0.75rem" }}>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => void handleSaveQrForCopy(copy)}
+                        >
+                          Save QR
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
