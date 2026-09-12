@@ -103,6 +103,7 @@ export interface GroupedBookSummary {
 export interface BookCopyScanResponse {
   copyId: string;
   ssnNumber: string;
+  bookSsnNumber: string;
   accessionNumber: string;
   title: string;
   author: string;
@@ -525,6 +526,24 @@ export function listBookCopies(ssnNumber: string, actorUserId: string) {
 export function getBookCopyByQrCode(qrCodeValue: string, actorUserId: string) {
   return request<BookCopySummary>(`/api/catalog/copies/by-qr?value=${encodeURIComponent(qrCodeValue)}`, {
     headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
+export function getBookCopyBySsn(ssnNumber: string, actorUserId: string) {
+  return request<BookCopySummary>(`/api/catalog/copies/by-ssn?value=${encodeURIComponent(ssnNumber)}`, {
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
+export function updateBookCopyBySsn(
+  ssnNumber: string,
+  payload: { shelfLocation: string },
+  actorUserId: string
+) {
+  return request<BookCopySummary>(`/api/catalog/copies/by-ssn?value=${encodeURIComponent(ssnNumber)}`, {
+    method: "PUT",
+    headers: { "X-Actor-User-Id": actorUserId },
+    body: JSON.stringify(payload)
   });
 }
 

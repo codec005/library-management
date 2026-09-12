@@ -395,6 +395,40 @@ public class DefaultCatalogService implements CatalogService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public BookCopySummary getBookCopyBySsn(String ssnNumber, UUID actorUserId) {
+        findCatalogManager(actorUserId);
+        BookCopy copy = bookCopyRepository.findBySsnNumber(cleanValue(ssnNumber))
+            .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
+
+        return BookCopySummary.from(copy);
+    }
+
+    @Override
+    @Transactional
+    public BookCopySummary updateBookCopyBySsn(String ssnNumber, BookCopyUpdateRequest request, UUID actorUserId) {
+        UserAccount actor = findCatalogManager(actorUserId);
+        BookCopy copy = bookCopyRepository.findBySsnNumber(cleanValue(ssnNumber))
+            .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
+
+        String shelfLocation = cleanValue(request.shelfLocation());
+        if (shelfLocation.isEmpty()) {
+            throw new IllegalArgumentException("Shelf location is required");
+        }
+
+        copy.updateShelfLocation(shelfLocation);
+        BookCopy saved = bookCopyRepository.save(copy);
+        auditLogger.record(
+            AuditAction.BOOK_UPDATE,
+            actor.getId(),
+            "BookCopy",
+            saved.getId(),
+            saved.getSsnNumber() + " · shelf " + saved.getShelfLocation()
+        );
+        return BookCopySummary.from(saved);
+    }
+
+    @Override
     @Transactional
     public void removeBookCopyByQrCode(String qrCodeValue, UUID actorUserId) {
         UserAccount actor = findCatalogManager(actorUserId);
