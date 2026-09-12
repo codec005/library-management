@@ -1405,10 +1405,14 @@ export default function App() {
   }
 
   async function fillBookEditFormFromSsn(ssn: string) {
-    const matches = await searchBooks(ssn, { page: 0, size: 10 });
-    const book = matches.content.find((item) => item.ssnNumber === ssn) ?? matches.content[0];
+    const cleanedSsn = ssn.trim();
+    const matches = await searchBooks(cleanedSsn, { page: 0, size: 50 });
+    // Require exact SSN — search also returns prefix hits (e.g. "A" → "A1").
+    const book = matches.content.find(
+      (item) => item.ssnNumber.trim().toLowerCase() === cleanedSsn.toLowerCase()
+    );
     if (!book) {
-      throw new Error("Book not found for the entered SSN.");
+      throw new Error(`No book found with exact SSN "${cleanedSsn}".`);
     }
 
     setBookEditForm({
@@ -2498,11 +2502,11 @@ export default function App() {
             </form>
 
             <div className="staff-issue-panel">
-              <h3>Edit Book Details</h3>
-              <p>Load a book by SSN or copy QR, then update title, author, publisher, category, fine, or loan period.</p>
+              <h3>Edit Book Copy Details</h3>
+              <p>Load by exact book/copy SSN or copy QR, then update title, author, publisher, category, fine, or loan period.</p>
               <div className="staff-issue-grid remove-copy-grid">
                 <input
-                  placeholder="Book SSN number"
+                  placeholder="Exact book SSN number"
                   value={bookEditForm.ssnNumber}
                   onChange={(event) => setBookEditForm({ ...bookEditForm, ssnNumber: event.target.value })}
                 />
