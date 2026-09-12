@@ -53,16 +53,19 @@ export interface UserQrCredentialResponse {
   qrCredential: string;
 }
 
-export interface BookCreateRequest {
+export interface BookCopyCreateRequest {
   ssnNumber: string;
+  shelfLocation: string;
+}
+
+export interface BookCreateRequest {
   title: string;
   author: string;
   publisher?: string;
   category: string;
-  shelfLocation: string;
   finePerDay: number;
   loanPeriodDays: number;
-  copyCount: number;
+  copies: BookCopyCreateRequest[];
 }
 
 export interface BookUpdateRequest {

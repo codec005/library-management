@@ -810,6 +810,105 @@ button.book-row-button:focus-visible span {
   grid-column: 1 / -1;
 }
 
+.add-copies-window {
+  max-width: 760px;
+  width: min(760px, 100%);
+}
+
+.add-copies-form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.add-copies-list {
+  display: grid;
+  gap: 0.75rem;
+  max-height: min(52vh, 420px);
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.add-copy-row {
+  align-items: end;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: auto minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  padding: 0.85rem 0.95rem;
+}
+
+.add-copy-index {
+  align-self: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.add-copy-row label {
+  margin: 0;
+}
+
+.icon-action-button {
+  align-items: center;
+  display: inline-flex;
+  height: 2.6rem;
+  justify-content: center;
+  min-width: 2.6rem;
+  padding: 0.55rem;
+}
+
+.icon-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.add-copies-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.add-copies-actions .secondary-button {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.4rem;
+}
+
+.add-copies-submit-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+@media (max-width: 720px) {
+  .add-copy-row {
+    grid-template-columns: 1fr;
+  }
+
+  .icon-action-button {
+    width: 100%;
+  }
+
+  .add-copies-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .add-copies-submit-group {
+    width: 100%;
+  }
+
+  .add-copies-submit-group button {
+    flex: 1;
+  }
+}
+
 .directory-button {
   margin-top: 1rem;
 }

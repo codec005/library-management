@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Library, QrCode, Search, Users } from "lucide-react";
+import { BookOpen, Library, Plus, QrCode, Search, Trash2, Users } from "lucide-react";
 import QRCode from "qrcode";
 import QrScanner from "./QrScanner";
 import {
@@ -56,6 +56,12 @@ const COPYRIGHT_YEAR = new Date().getFullYear();
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
+
+let draftIdCounter = 0;
+function createDraftId() {
+  draftIdCounter += 1;
+  return `draft-${draftIdCounter}-${Date.now()}`;
+}
 
 type GroupedCatalogBook = {
   title: string;
@@ -281,17 +287,18 @@ export default function App() {
     password: "",
     role: "STUDENT"
   });
-  const [bookForm, setBookForm] = useState<BookCreateRequest>({
-    ssnNumber: "",
+  const [bookForm, setBookForm] = useState({
     title: "",
     author: "",
     publisher: "",
     category: "",
-    shelfLocation: "",
     finePerDay: 5,
-    loanPeriodDays: 14,
-    copyCount: 1
+    loanPeriodDays: 14
   });
+  const [bookCopyDrafts, setBookCopyDrafts] = useState<Array<{ id: string; ssnNumber: string; shelfLocation: string }>>([
+    { id: createDraftId(), ssnNumber: "", shelfLocation: "" }
+  ]);
+  const [isAddCopiesWindowOpen, setIsAddCopiesWindowOpen] = useState(false);
   const [bookEditForm, setBookEditForm] = useState<BookUpdateRequest & { ssnNumber: string }>({
     ssnNumber: "",
     title: "",
@@ -1347,6 +1354,71 @@ export default function App() {
     link.click();
   }
 
+  function resetBookRegistrationForms() {
+    setBookForm({
+      title: "",
+      author: "",
+      publisher: "",
+      category: "",
+      finePerDay: 5,
+      loanPeriodDays: 14
+    });
+    setBookCopyDrafts([{ id: createDraftId(), ssnNumber: "", shelfLocation: "" }]);
+    setIsAddCopiesWindowOpen(false);
+  }
+
+  function handleContinueToCopies(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+
+    if (!currentUser) {
+      setMessage("Sign in as librarian or admin to add books.");
+      return;
+    }
+
+    if (!bookForm.title.trim() || !bookForm.author.trim() || !bookForm.category.trim()) {
+      setMessage("Enter title, author, and category before adding copies.");
+      return;
+    }
+
+    if (bookForm.loanPeriodDays < 1 || bookForm.loanPeriodDays > 14) {
+      setMessage("Loan period must be between 1 and 14 days.");
+      return;
+    }
+
+    if (bookForm.finePerDay < 0) {
+      setMessage("Fine per day cannot be negative.");
+      return;
+    }
+
+    if (bookCopyDrafts.length === 0) {
+      setBookCopyDrafts([{ id: createDraftId(), ssnNumber: "", shelfLocation: "" }]);
+    }
+    setIsAddCopiesWindowOpen(true);
+  }
+
+  function updateBookCopyDraft(id: string, patch: Partial<{ ssnNumber: string; shelfLocation: string }>) {
+    setBookCopyDrafts((current) =>
+      current.map((copy) => (copy.id === id ? { ...copy, ...patch } : copy))
+    );
+  }
+
+  function addBookCopyDraft() {
+    setBookCopyDrafts((current) => [
+      ...current,
+      { id: createDraftId(), ssnNumber: "", shelfLocation: "" }
+    ]);
+  }
+
+  function removeBookCopyDraft(id: string) {
+    setBookCopyDrafts((current) => {
+      if (current.length <= 1) {
+        return current;
+      }
+      return current.filter((copy) => copy.id !== id);
+    });
+  }
+
   async function handleAddBook(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1355,35 +1427,51 @@ export default function App() {
       return;
     }
 
+    const copies = bookCopyDrafts.map((copy) => ({
+      ssnNumber: copy.ssnNumber.trim(),
+      shelfLocation: copy.shelfLocation.trim()
+    }));
+
+    if (copies.some((copy) => !copy.ssnNumber || !copy.shelfLocation)) {
+      setMessage("Each copy needs an SSN number and shelf location.");
+      return;
+    }
+
+    const uniqueSsns = new Set(copies.map((copy) => copy.ssnNumber.toLowerCase()));
+    if (uniqueSsns.size !== copies.length) {
+      setMessage("Each copy SSN must be unique.");
+      return;
+    }
+
+    const payload: BookCreateRequest = {
+      title: bookForm.title.trim(),
+      author: bookForm.author.trim(),
+      publisher: bookForm.publisher.trim() || undefined,
+      category: bookForm.category.trim(),
+      finePerDay: bookForm.finePerDay,
+      loanPeriodDays: bookForm.loanPeriodDays,
+      copies
+    };
+
     try {
-      const book = await addBook(bookForm, currentUser.userId);
+      const book = await addBook(payload, currentUser.userId);
       await refreshAvailableBooks(query);
       listBookCategories()
         .then(setBookCategories)
         .catch(() => undefined);
-      setBookForm({
-        ssnNumber: "",
-        title: "",
-        author: "",
-        publisher: "",
-        category: "",
-        shelfLocation: "",
-        finePerDay: 5,
-        loanPeriodDays: 14,
-        copyCount: 1
-      });
+      resetBookRegistrationForms();
 
       if (!generateQrAfterAdd) {
         setGeneratedBookQrs([]);
         setIsBookQrWindowOpen(false);
-        setMessage(`${book.title} added to catalog.`);
+        setMessage(`${book.title} added to catalog with ${payload.copies.length} copy/copies.`);
         return;
       }
 
       try {
-        const copies = await listBookCopies(book.ssnNumber, currentUser.userId);
+        const createdCopies = await listBookCopies(book.ssnNumber, currentUser.userId);
         const qrImages = await Promise.all(
-          copies.map(async (copy) => ({
+          createdCopies.map(async (copy) => ({
             ...copy,
             dataUrl: await QRCode.toDataURL(copy.qrCodeValue, {
               margin: 2,
@@ -1910,8 +1998,8 @@ export default function App() {
           {visibleAvailableBooks.length > 0 && (
             <p className="list-note">
               {availableCatalogBooks.length > visibleAvailableBooks.length
-                ? `Showing ${visibleAvailableBooks.length} of ${availableCatalogBooks.length} available titles (grouped by name).`
-                : `Showing ${visibleAvailableBooks.length} available title${visibleAvailableBooks.length === 1 ? "" : "s"} (grouped by name).`}
+                ? `Showing ${visibleAvailableBooks.length} of ${availableCatalogBooks.length} available titles.`
+                : `Showing ${visibleAvailableBooks.length} available title${visibleAvailableBooks.length === 1 ? "" : "s"}.`}
               {availableTotalElements > books.length ? ` · ${availableTotalElements} catalog entries match filters.` : ""}
             </p>
           )}
@@ -2298,7 +2386,6 @@ export default function App() {
               <BookOpen size={22} />
               <div>
                 <h2>All Issued Books</h2>
-                <p>Open a table of every currently issued copy, with borrower and dates.</p>
               </div>
             </div>
             <button
@@ -2405,14 +2492,15 @@ export default function App() {
               <BookOpen size={22} />
               <div>
                 <h2>Catalog Management</h2>
-                <p>Only librarian and admin accounts can add or remove books.</p>
+                <p>Enter shared book details, then add each physical copy with its own SSN and shelf location.</p>
               </div>
             </div>
 
-            <form className="management-form" onSubmit={handleAddBook}>
+            <form className="management-form" onSubmit={handleContinueToCopies}>
               <label>
                 Book Title
                 <input
+                  required
                   placeholder="Example: Clean Code"
                   value={bookForm.title}
                   onChange={(event) => setBookForm({ ...bookForm, title: event.target.value })}
@@ -2421,18 +2509,10 @@ export default function App() {
               <label>
                 Author
                 <input
+                  required
                   placeholder="Example: Robert C. Martin"
                   value={bookForm.author}
                   onChange={(event) => setBookForm({ ...bookForm, author: event.target.value })}
-                />
-              </label>
-              <label>
-                SSN Number
-                <input
-                  required
-                  placeholder="Example: 9780132350884"
-                  value={bookForm.ssnNumber}
-                  onChange={(event) => setBookForm({ ...bookForm, ssnNumber: event.target.value })}
                 />
               </label>
               <label>
@@ -2446,17 +2526,10 @@ export default function App() {
               <label>
                 Category
                 <input
+                  required
                   placeholder="Example: Database, Programming"
                   value={bookForm.category}
                   onChange={(event) => setBookForm({ ...bookForm, category: event.target.value })}
-                />
-              </label>
-              <label>
-                Shelf Location
-                <input
-                  placeholder="Example: A1-R2-S3"
-                  value={bookForm.shelfLocation}
-                  onChange={(event) => setBookForm({ ...bookForm, shelfLocation: event.target.value })}
                 />
               </label>
               <label>
@@ -2480,16 +2553,6 @@ export default function App() {
                   onChange={(event) => setBookForm({ ...bookForm, loanPeriodDays: Number(event.target.value) })}
                 />
               </label>
-              <label>
-                Number Of Copies
-                <input
-                  min={1}
-                  placeholder="Physical copies to create"
-                  type="number"
-                  value={bookForm.copyCount}
-                  onChange={(event) => setBookForm({ ...bookForm, copyCount: Number(event.target.value) })}
-                />
-              </label>
               <label className="inline-checkbox">
                 <input
                   type="checkbox"
@@ -2498,7 +2561,7 @@ export default function App() {
                 />
                 Generate QR codes after adding this book
               </label>
-              <button type="submit">Add Book</button>
+              <button type="submit">Continue to Copies</button>
             </form>
 
             <div className="staff-issue-panel">
@@ -3099,6 +3162,85 @@ export default function App() {
               ))
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {isAddCopiesWindowOpen && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add book copies"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAddCopiesWindowOpen(false);
+            }
+          }}
+        >
+          <div className="modal-panel add-copies-window">
+            <div className="modal-header">
+              <div>
+                <h2>Add Book Copies</h2>
+                <p>
+                  {bookForm.title.trim() || "Untitled"} · enter SSN and shelf for each physical copy.
+                  Use + to add more copies.
+                </p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setIsAddCopiesWindowOpen(false)}>
+                Back
+              </button>
+            </div>
+
+            <form className="add-copies-form" onSubmit={(event) => void handleAddBook(event)}>
+              <div className="add-copies-list">
+                {bookCopyDrafts.map((copy, index) => (
+                  <div className="add-copy-row" key={copy.id}>
+                    <span className="add-copy-index">Copy {index + 1}</span>
+                    <label>
+                      SSN Number
+                      <input
+                        required
+                        placeholder="Example: 9780132350884"
+                        value={copy.ssnNumber}
+                        onChange={(event) => updateBookCopyDraft(copy.id, { ssnNumber: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Shelf Location
+                      <input
+                        required
+                        placeholder="Example: A1-R2-S3"
+                        value={copy.shelfLocation}
+                        onChange={(event) => updateBookCopyDraft(copy.id, { shelfLocation: event.target.value })}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="secondary-button icon-action-button"
+                      aria-label={`Remove copy ${index + 1}`}
+                      disabled={bookCopyDrafts.length <= 1}
+                      onClick={() => removeBookCopyDraft(copy.id)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="add-copies-actions">
+                <button type="button" className="secondary-button" onClick={addBookCopyDraft}>
+                  <Plus size={16} />
+                  Add copy
+                </button>
+                <div className="add-copies-submit-group">
+                  <button type="button" className="secondary-button" onClick={() => setIsAddCopiesWindowOpen(false)}>
+                    Back
+                  </button>
+                  <button type="submit">Register Book ({bookCopyDrafts.length})</button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}

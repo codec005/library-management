@@ -259,14 +259,40 @@ public class DefaultCatalogService implements CatalogService {
     @Transactional
     public BookSummary addBook(BookCreateRequest request, UUID actorUserId) {
         UserAccount actor = findCatalogManager(actorUserId);
-        String baseSsn = cleanValue(request.ssnNumber());
-
-        if (bookRepository.existsById(baseSsn)) {
-            throw new IllegalStateException("SSN number already exists");
+        if (request.copies() == null || request.copies().isEmpty()) {
+            throw new IllegalArgumentException("At least one book copy is required");
         }
 
+        List<BookCopyCreateRequest> cleanedCopies = request.copies().stream()
+            .map(copy -> new BookCopyCreateRequest(
+                cleanValue(copy.ssnNumber()),
+                cleanValue(copy.shelfLocation())
+            ))
+            .toList();
+
+        for (BookCopyCreateRequest copy : cleanedCopies) {
+            if (copy.ssnNumber().isEmpty()) {
+                throw new IllegalArgumentException("Each copy requires an SSN number");
+            }
+            if (copy.shelfLocation().isEmpty()) {
+                throw new IllegalArgumentException("Each copy requires a shelf location");
+            }
+        }
+
+        List<String> copySsns = cleanedCopies.stream().map(BookCopyCreateRequest::ssnNumber).toList();
+        if (copySsns.size() != Set.copyOf(copySsns).size()) {
+            throw new IllegalStateException("Duplicate SSN numbers in the copy list");
+        }
+
+        for (String copySsn : copySsns) {
+            if (bookRepository.existsById(copySsn) || bookCopyRepository.findBySsnNumber(copySsn).isPresent()) {
+                throw new IllegalStateException("SSN number already exists: " + copySsn);
+            }
+        }
+
+        String bookSsn = copySsns.get(0);
         Book book = new Book(
-            baseSsn,
+            bookSsn,
             request.title(),
             request.author(),
             request.publisher(),
@@ -275,11 +301,11 @@ public class DefaultCatalogService implements CatalogService {
             request.loanPeriodDays()
         );
 
-        for (int index = 1; index <= request.copyCount(); index++) {
-            String copySsn = request.copyCount() == 1 ? baseSsn : baseSsn + "-" + index;
+        for (BookCopyCreateRequest copy : cleanedCopies) {
+            String copySsn = copy.ssnNumber();
             String accessionNumber = "ACC-" + copySsn;
             String qrCodeValue = "BOOK-QR-" + copySsn;
-            book.addCopy(new BookCopy(copySsn, accessionNumber, qrCodeValue, request.shelfLocation()));
+            book.addCopy(new BookCopy(copySsn, accessionNumber, qrCodeValue, copy.shelfLocation()));
         }
 
         Book savedBook = bookRepository.save(book);
