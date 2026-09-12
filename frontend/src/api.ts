@@ -311,6 +311,29 @@ export function getCatalogCopyStats() {
   return request<CatalogCopyStats>("/api/catalog/copies/stats");
 }
 
+export interface BrandingResponse {
+  collegeName: string;
+  logoUrl: string;
+}
+
+export function getBranding() {
+  return request<BrandingResponse>("/api/branding");
+}
+
+export function updateBranding(
+  payload: { collegeName: string; logoDataUrl?: string },
+  actorUserId: string
+) {
+  return request<BrandingResponse>("/api/branding", {
+    method: "PUT",
+    headers: { "X-Actor-User-Id": actorUserId },
+    body: JSON.stringify({
+      collegeName: payload.collegeName,
+      logoDataUrl: payload.logoDataUrl ?? ""
+    })
+  });
+}
+
 export function listBookCategories() {
   return request<string[]>("/api/catalog/categories");
 }

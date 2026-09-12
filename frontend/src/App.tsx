@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Library, Plus, QrCode, Search, Trash2, Users } from "lucide-react";
 import QRCode from "qrcode";
 import QrScanner from "./QrScanner";
@@ -38,6 +38,8 @@ import {
   getBookCopyByQrCode,
   getBookCopyBySsn,
   getCatalogCopyStats,
+  getBranding,
+  updateBranding,
   removeBook,
   removeBookCopyByQrCode,
   removeUser,
@@ -155,8 +157,11 @@ export default function App() {
   const [userScanValue, setUserScanValue] = useState("");
   const [currentUser, setCurrentUser] = useState<LoginResponse | null>(null);
   const [sessionRemainingSeconds, setSessionRemainingSeconds] = useState<number | null>(null);
-  const [logoUrl, setLogoUrl] = useState(() => localStorage.getItem("collegeLogoUrl") ?? "");
-  const [collegeName, setCollegeName] = useState(() => localStorage.getItem("collegeName") ?? "");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [collegeName, setCollegeName] = useState("");
+  const logoUrlRef = useRef("");
+  const collegeNameRef = useRef("");
+  const collegeNameSaveTimeoutRef = useRef<number | null>(null);
   const [bookCategories, setBookCategories] = useState<string[]>([]);
   const [availableCopyCount, setAvailableCopyCount] = useState(0);
   const [issuedCopyCount, setIssuedCopyCount] = useState(0);
@@ -337,7 +342,55 @@ export default function App() {
       .then(setBookCategories)
       .catch(() => setBookCategories([]));
     void refreshCopyStats();
+    void refreshBranding();
+
+    return () => {
+      if (collegeNameSaveTimeoutRef.current !== null) {
+        window.clearTimeout(collegeNameSaveTimeoutRef.current);
+      }
+    };
   }, []);
+
+  async function refreshBranding() {
+    try {
+      const branding = await getBranding();
+      const nextLogo = branding.logoUrl || "";
+      const nextName = branding.collegeName || "";
+      logoUrlRef.current = nextLogo;
+      collegeNameRef.current = nextName;
+      setLogoUrl(nextLogo);
+      setCollegeName(nextName);
+      localStorage.removeItem("collegeLogoUrl");
+      localStorage.removeItem("collegeName");
+    } catch {
+      // Keep current branding values if the request fails.
+    }
+  }
+
+  async function saveBranding(nextCollegeName: string, logoDataUrl?: string) {
+    if (!currentUser || !canManageCollegeBranding) {
+      setMessage("Sign in as admin to update college branding.");
+      return;
+    }
+
+    try {
+      const branding = await updateBranding(
+        {
+          collegeName: nextCollegeName,
+          logoDataUrl
+        },
+        currentUser.userId
+      );
+      const savedLogo = branding.logoUrl || "";
+      const savedName = branding.collegeName || "";
+      logoUrlRef.current = savedLogo;
+      collegeNameRef.current = savedName;
+      setLogoUrl(savedLogo);
+      setCollegeName(savedName);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save college branding.");
+    }
+  }
 
   async function refreshCopyStats() {
     try {
@@ -514,19 +567,33 @@ export default function App() {
       return;
     }
 
+    if (file.size > 2_500_000) {
+      setMessage("Logo image is too large. Choose an image under 2.5 MB.");
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       const uploadedLogoUrl = String(reader.result);
       setLogoUrl(uploadedLogoUrl);
-      localStorage.setItem("collegeLogoUrl", uploadedLogoUrl);
+      void saveBranding(collegeNameRef.current, uploadedLogoUrl);
+      setMessage("College logo saved for all devices.");
     };
     reader.readAsDataURL(file);
   }
 
   function handleCollegeNameChange(event: React.ChangeEvent<HTMLInputElement>) {
     const value = event.target.value;
+    collegeNameRef.current = value;
     setCollegeName(value);
-    localStorage.setItem("collegeName", value);
+
+    if (collegeNameSaveTimeoutRef.current !== null) {
+      window.clearTimeout(collegeNameSaveTimeoutRef.current);
+    }
+
+    collegeNameSaveTimeoutRef.current = window.setTimeout(() => {
+      void saveBranding(collegeNameRef.current);
+    }, 500);
   }
 
   async function loadCurrentUserViews(user: LoginResponse) {
