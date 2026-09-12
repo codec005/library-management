@@ -8,7 +8,6 @@ import {
   BookCopyScanResponse,
   BookCopySummary,
   BookCreateRequest,
-  BookSummary,
   GroupedBookSummary,
   CirculationResponse,
   IdentifierType,
@@ -74,41 +73,6 @@ type GroupedCatalogBook = {
   editionCount: number;
   copies: BookCopySummary[];
 };
-
-function groupBooksByTitle(books: BookSummary[], onlyAvailable = false): GroupedCatalogBook[] {
-  const grouped = new Map<string, GroupedCatalogBook>();
-
-  for (const book of books) {
-    if (onlyAvailable && book.availableCopies <= 0) {
-      continue;
-    }
-
-    const key = book.title.trim().toLowerCase();
-    const existing = grouped.get(key);
-    if (!existing) {
-      grouped.set(key, {
-        title: book.title.trim(),
-        author: book.author || "",
-        publisher: book.publisher ?? "",
-        category: book.category || "",
-        availableCopies: book.availableCopies,
-        totalCopies: book.totalCopies,
-        editionCount: 1,
-        copies: []
-      });
-      continue;
-    }
-
-    existing.availableCopies += book.availableCopies;
-    existing.totalCopies += book.totalCopies;
-    existing.editionCount += 1;
-  }
-
-  return Array.from(grouped.values()).sort((left, right) => left.title.localeCompare(right.title));
-}
-
-const AVAILABLE_BOOKS_PREVIEW_SIZE = 4;
-const AVAILABLE_BOOKS_FETCH_SIZE = 40;
 
 function PaginationControls({
   page,
@@ -192,13 +156,7 @@ export default function App() {
   const [sessionRemainingSeconds, setSessionRemainingSeconds] = useState<number | null>(null);
   const [logoUrl, setLogoUrl] = useState(() => localStorage.getItem("collegeLogoUrl") ?? "");
   const [collegeName, setCollegeName] = useState(() => localStorage.getItem("collegeName") ?? "");
-  const [query, setQuery] = useState("");
-  const [books, setBooks] = useState<BookSummary[]>([]);
-  const [availableTotalElements, setAvailableTotalElements] = useState(0);
   const [bookCategories, setBookCategories] = useState<string[]>([]);
-  const [availableCategory, setAvailableCategory] = useState("");
-  const [availableAuthor, setAvailableAuthor] = useState("");
-  const [availablePublisher, setAvailablePublisher] = useState("");
   const [isCatalogWindowOpen, setIsCatalogWindowOpen] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalogCategory, setCatalogCategory] = useState("");
@@ -363,11 +321,6 @@ export default function App() {
     () => myIssuedBooks.reduce((total, book) => total + book.fineAmount, 0),
     [myIssuedBooks]
   );
-  const availableCatalogBooks = useMemo(() => groupBooksByTitle(books, true), [books]);
-  const visibleAvailableBooks = useMemo(
-    () => availableCatalogBooks.slice(0, AVAILABLE_BOOKS_PREVIEW_SIZE),
-    [availableCatalogBooks]
-  );
   const selectedUserTotalFine = useMemo(
     () => selectedUserIssuedBooks.reduce((total, book) => total + book.fineAmount, 0),
     [selectedUserIssuedBooks]
@@ -377,30 +330,19 @@ export default function App() {
     : `${Math.floor(sessionRemainingSeconds / 60)}:${String(sessionRemainingSeconds % 60).padStart(2, "0")}`;
 
   useEffect(() => {
-    void refreshAvailableBooks("");
     listBookCategories()
       .then(setBookCategories)
       .catch(() => setBookCategories([]));
   }, []);
 
-  async function refreshAvailableBooks(
-    searchQuery = query,
-    filters?: { category?: string; author?: string; publisher?: string }
-  ) {
+  async function refreshCatalogIfOpen() {
+    if (!isCatalogWindowOpen) {
+      return;
+    }
     try {
-      const result = await searchBooks(searchQuery, {
-        availableOnly: true,
-        category: filters?.category ?? availableCategory,
-        author: filters?.author ?? availableAuthor,
-        publisher: filters?.publisher ?? availablePublisher,
-        page: 0,
-        size: AVAILABLE_BOOKS_FETCH_SIZE
-      });
-      setBooks(result.content);
-      setAvailableTotalElements(result.totalElements);
+      await refreshCatalogBooks();
     } catch {
-      setBooks([]);
-      setAvailableTotalElements(0);
+      // Keep the open catalogue as-is if refresh fails.
     }
   }
 
@@ -631,27 +573,21 @@ export default function App() {
     }
   }
 
-  async function handleSearch(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await refreshAvailableBooks(query);
-  }
-
   async function handleOpenCatalogWindow() {
-    const nextFilters = {
-      category: availableCategory,
-      author: availableAuthor,
-      publisher: availablePublisher,
-      availableOnly: true
-    };
-    setCatalogQuery(query);
-    setCatalogCategory(availableCategory);
-    setCatalogAuthor(availableAuthor);
-    setCatalogPublisher(availablePublisher);
+    setCatalogQuery("");
+    setCatalogCategory("");
+    setCatalogAuthor("");
+    setCatalogPublisher("");
     setCatalogAvailableOnly(true);
     setCatalogPage(0);
     setIsCatalogWindowOpen(true);
     try {
-      await refreshCatalogBooks(query, 0, catalogPageSize, nextFilters);
+      await refreshCatalogBooks("", 0, catalogPageSize, {
+        category: "",
+        author: "",
+        publisher: "",
+        availableOnly: true
+      });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to open catalog.");
     }
@@ -846,7 +782,7 @@ export default function App() {
         issueLoanDays
       );
       await loadCurrentUserViews(currentUser);
-      await refreshAvailableBooks(query);
+      await refreshCatalogIfOpen();
       setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName} for ${issueLoanDays} day(s).`);
       setScanResult({ ...selectedCopy, status: "ISSUED" });
     } catch (error) {
@@ -891,7 +827,7 @@ export default function App() {
       setStaffBorrowerIdentifier(borrowerIdentifier);
       setScanValue(bookScanValue);
       setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName} for ${issueLoanDays} day(s). Return by ${transaction.dueOn}.`);
-      await refreshAvailableBooks(query);
+      await refreshCatalogIfOpen();
       if (selectedUserDetails) {
         setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
       }
@@ -1019,7 +955,7 @@ export default function App() {
         return next;
       });
       setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
-      await refreshAvailableBooks(query);
+      await refreshCatalogIfOpen();
       const fineMessage = transaction.fineAmount === 0 ? "No fine." : `Fine due: Rs ${transaction.fineAmount}.`;
       setMessage(`${transaction.bookTitle} returned. ${fineMessage}`);
     } catch (error) {
@@ -1052,7 +988,7 @@ export default function App() {
       setReturnScanValue("");
       setReturnResetFine(false);
       setReturnCheckedBorrower(null);
-      await refreshAvailableBooks(query);
+      await refreshCatalogIfOpen();
       if (selectedUserDetails?.id) {
         setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
       }
@@ -1462,7 +1398,7 @@ export default function App() {
 
     try {
       const book = await addBook(payload, currentUser.userId);
-      await refreshAvailableBooks(query);
+      await refreshCatalogIfOpen();
       listBookCategories()
         .then(setBookCategories)
         .catch(() => undefined);
@@ -1635,7 +1571,7 @@ export default function App() {
         finePerDay: book.finePerDay,
         loanPeriodDays: book.loanPeriodDays
       });
-      await refreshAvailableBooks(query);
+      await refreshCatalogIfOpen();
       setMessage(`${book.title} copy ${copy.ssnNumber} updated.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to update book.");
@@ -1656,7 +1592,7 @@ export default function App() {
 
     try {
       await removeBookCopyByQrCode(qrCodeValue, currentUser.userId);
-      await refreshAvailableBooks(query);
+      await refreshCatalogIfOpen();
       setGeneratedBookQrs([]);
       setIsBookQrWindowOpen(false);
       setBookCopyQrValue("");
@@ -1680,7 +1616,7 @@ export default function App() {
 
     try {
       await removeBook(ssnNumber, currentUser.userId);
-      await refreshAvailableBooks(query);
+      await refreshCatalogIfOpen();
       setBookSsnToRemove("");
       setMessage(`Book with SSN ${ssnNumber} deleted from the database.`);
     } catch (error) {
@@ -1972,98 +1908,13 @@ export default function App() {
             <BookOpen size={22} />
             <div>
               <h2>Available Books</h2>
-              <p>Titles with the same name are grouped. Shows up to 4 titles. Open Full Catalogue for more.</p>
+              <p>Browse every title and physical copy in the full catalogue.</p>
             </div>
           </div>
-
-          <div className="catalog-filters">
-            <label>
-              Category
-              <select value={availableCategory} onChange={(event) => setAvailableCategory(event.target.value)}>
-                <option value="">All categories</option>
-                {bookCategories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Author
-              <input
-                placeholder="Author starts with"
-                value={availableAuthor}
-                onChange={(event) => setAvailableAuthor(event.target.value)}
-              />
-            </label>
-            <label>
-              Publisher
-              <input
-                placeholder="Publisher starts with"
-                value={availablePublisher}
-                onChange={(event) => setAvailablePublisher(event.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => void refreshAvailableBooks(query)}
-            >
-              Apply Filters
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => {
-                setAvailableCategory("");
-                setAvailableAuthor("");
-                setAvailablePublisher("");
-                void refreshAvailableBooks(query, { category: "", author: "", publisher: "" });
-              }}
-            >
-              Clear Filters
-            </button>
-          </div>
-
-          <form className="inline-form" onSubmit={handleSearch}>
-            <Search size={18} />
-            <input placeholder="Search within filters" value={query} onChange={(event) => setQuery(event.target.value)} />
-            <button type="submit">Search</button>
-          </form>
-
-          <div className="book-list">
-            {visibleAvailableBooks.length === 0 ? (
-              <div className="empty-state">No available copies match your search.</div>
-            ) : (
-              visibleAvailableBooks.map((book) => (
-                <div className="book-row" key={book.title.toLowerCase()}>
-                  <div>
-                    <strong>{book.title}</strong>
-                    <span>
-                      {[book.author, book.category].filter(Boolean).join(" · ")}
-                    </span>
-                  </div>
-                  <div className="book-actions">
-                    <span className="availability">{book.availableCopies}/{book.totalCopies} available</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {visibleAvailableBooks.length > 0 && (
-            <p className="list-note">
-              {availableCatalogBooks.length > visibleAvailableBooks.length
-                ? `Showing ${visibleAvailableBooks.length} of ${availableCatalogBooks.length} available titles.`
-                : `Showing ${visibleAvailableBooks.length} available title${visibleAvailableBooks.length === 1 ? "" : "s"}.`}
-              {availableTotalElements > books.length ? ` · ${availableTotalElements} titles match filters.` : ""}
-            </p>
-          )}
 
           <button type="button" className="secondary-button directory-button" onClick={() => void handleOpenCatalogWindow()}>
             Open Full Catalogue
           </button>
-
         </article>
 
         <article className="panel issue-panel">

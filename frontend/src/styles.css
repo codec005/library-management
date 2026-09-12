@@ -476,6 +476,7 @@ label {
 }
 
 .available-books-panel {
+  align-items: flex-start;
   display: flex;
   flex-direction: column;
   grid-column: 1 / -1;
@@ -486,13 +487,14 @@ label {
   grid-column: span 2;
 }
 
-.available-books-panel .book-list {
-  flex: 1 1 auto;
-  min-height: 12rem;
+.available-books-panel .panel-title {
+  width: 100%;
 }
 
 .available-books-panel .directory-button {
-  margin-top: auto;
+  margin-top: 1rem;
+  padding: 0.75rem 1.15rem;
+  width: fit-content;
 }
 
 .catalog-filters {
