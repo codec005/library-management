@@ -1966,9 +1966,9 @@ export default function App() {
           {visibleAvailableBooks.length > 0 && (
             <p className="list-note">
               {availableCatalogBooks.length > visibleAvailableBooks.length
-                ? `Showing ${visibleAvailableBooks.length} of ${availableCatalogBooks.length} available titles (grouped by name).`
-                : `Showing ${visibleAvailableBooks.length} available title${visibleAvailableBooks.length === 1 ? "" : "s"} (grouped by name).`}
-              {availableTotalElements > books.length ? ` · ${availableTotalElements} catalog entries match filters.` : ""}
+                ? `Showing ${visibleAvailableBooks.length} of ${availableCatalogBooks.length} available titles.`
+                : `Showing ${visibleAvailableBooks.length} available title${visibleAvailableBooks.length === 1 ? "" : "s"}.`}
+              {availableTotalElements > books.length ? ` · ${availableTotalElements} titles match filters.` : ""}
             </p>
           )}
 
@@ -3034,7 +3034,6 @@ export default function App() {
                       <strong>{book.title}</strong>
                       <span>
                         {[book.author, book.category].filter(Boolean).join(" · ")}
-                        {book.editionCount > 1 ? ` · ${book.editionCount} catalog entries` : ""}
                       </span>
                     </div>
                     <div className="book-actions">
