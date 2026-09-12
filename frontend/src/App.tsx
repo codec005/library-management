@@ -8,7 +8,6 @@ import {
   BookCopyScanResponse,
   BookCopySummary,
   BookCreateRequest,
-  BookUpdateRequest,
   BookSummary,
   GroupedBookSummary,
   CirculationResponse,
@@ -38,6 +37,7 @@ import {
   renewBookByIdentifier,
   registerUser,
   getBookCopyByQrCode,
+  getBookCopyBySsn,
   removeBook,
   removeBookCopyByQrCode,
   removeUser,
@@ -48,6 +48,7 @@ import {
   searchBooks,
   searchGroupedBooks,
   listCopiesByTitle,
+  updateBookCopyBySsn,
   updateUser
 } from "./api";
 
@@ -292,14 +293,20 @@ export default function App() {
     loanPeriodDays: 14,
     copyCount: 1
   });
-  const [bookEditForm, setBookEditForm] = useState<BookUpdateRequest & { ssnNumber: string }>({
+  const [bookEditForm, setBookEditForm] = useState({
     ssnNumber: "",
+    bookSsnNumber: "",
+    copySsnNumber: "",
     title: "",
     author: "",
     publisher: "",
     category: "",
     finePerDay: 5,
-    loanPeriodDays: 14
+    loanPeriodDays: 14,
+    shelfLocation: "",
+    accessionNumber: "",
+    qrCodeValue: "",
+    status: ""
   });
   const [bookEditQrValue, setBookEditQrValue] = useState("");
   const [issueLoanDays, setIssueLoanDays] = useState(14);
@@ -1404,39 +1411,68 @@ export default function App() {
     }
   }
 
+  function applyBookCopyToEditForm(copy: BookCopySummary) {
+    setBookEditForm({
+      ssnNumber: copy.ssnNumber,
+      bookSsnNumber: copy.bookSsnNumber,
+      copySsnNumber: copy.ssnNumber,
+      title: copy.title,
+      author: copy.author,
+      publisher: copy.publisher ?? "",
+      category: copy.category,
+      finePerDay: copy.finePerDay,
+      loanPeriodDays: copy.loanPeriodDays,
+      shelfLocation: copy.shelfLocation,
+      accessionNumber: copy.accessionNumber,
+      qrCodeValue: copy.qrCodeValue,
+      status: copy.status
+    });
+  }
+
   async function fillBookEditFormFromSsn(ssn: string) {
     const cleanedSsn = ssn.trim();
+    if (!currentUser) {
+      throw new Error("Sign in as librarian or admin to edit books.");
+    }
+
+    try {
+      const copy = await getBookCopyBySsn(cleanedSsn, currentUser.userId);
+      applyBookCopyToEditForm(copy);
+      return copy;
+    } catch {
+      // Fall through to catalog book lookup.
+    }
+
     const matches = await searchBooks(cleanedSsn, { page: 0, size: 50 });
-    // Require exact SSN — search also returns prefix hits (e.g. "A" → "A1").
     const book = matches.content.find(
       (item) => item.ssnNumber.trim().toLowerCase() === cleanedSsn.toLowerCase()
     );
     if (!book) {
-      throw new Error(`No book found with exact SSN "${cleanedSsn}".`);
+      throw new Error(`No physical copy or catalog book found with exact SSN "${cleanedSsn}".`);
     }
 
-    setBookEditForm({
-      ssnNumber: book.ssnNumber,
-      title: book.title,
-      author: book.author,
-      publisher: book.publisher ?? "",
-      category: book.category,
-      finePerDay: book.finePerDay,
-      loanPeriodDays: book.loanPeriodDays
-    });
-    return book;
+    const copies = await listBookCopies(book.ssnNumber, currentUser.userId);
+    const matchingCopy =
+      copies.find((copy) => copy.ssnNumber.trim().toLowerCase() === cleanedSsn.toLowerCase()) ??
+      copies[0];
+    if (!matchingCopy) {
+      throw new Error(`Book "${book.title}" has no physical copies to edit.`);
+    }
+
+    applyBookCopyToEditForm(matchingCopy);
+    return matchingCopy;
   }
 
   async function handleLoadBookForEdit() {
     const ssn = bookEditForm.ssnNumber.trim();
     if (!ssn) {
-      setMessage("Enter a book SSN to load details for editing.");
+      setMessage("Enter a book or copy SSN to load details for editing.");
       return;
     }
 
     try {
-      const book = await fillBookEditFormFromSsn(ssn);
-      setMessage(`Loaded ${book.title} for editing.`);
+      const copy = await fillBookEditFormFromSsn(ssn);
+      setMessage(`Loaded copy ${copy.ssnNumber} (${copy.title}) for editing.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to load book details.");
     }
@@ -1456,8 +1492,8 @@ export default function App() {
 
     try {
       const copy = await getBookCopyByQrCode(qrCodeValue, currentUser.userId);
-      const book = await fillBookEditFormFromSsn(copy.bookSsnNumber);
-      setMessage(`Loaded ${book.title} from QR for editing.`);
+      applyBookCopyToEditForm(copy);
+      setMessage(`Loaded copy ${copy.ssnNumber} (${copy.title}) from QR for editing.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to load book details from QR.");
     }
@@ -1472,15 +1508,21 @@ export default function App() {
       return;
     }
 
-    const ssn = bookEditForm.ssnNumber.trim();
-    if (!ssn) {
-      setMessage("Enter the book SSN before saving changes.");
+    const bookSsn = bookEditForm.bookSsnNumber.trim();
+    const copySsn = bookEditForm.copySsnNumber.trim();
+    if (!bookSsn || !copySsn) {
+      setMessage("Load a physical copy before saving changes.");
+      return;
+    }
+
+    if (!bookEditForm.shelfLocation.trim()) {
+      setMessage("Shelf location is required.");
       return;
     }
 
     try {
       const book = await updateBook(
-        ssn,
+        bookSsn,
         {
           title: bookEditForm.title,
           author: bookEditForm.author,
@@ -1491,8 +1533,22 @@ export default function App() {
         },
         currentUser.userId
       );
+      const copy = await updateBookCopyBySsn(
+        copySsn,
+        { shelfLocation: bookEditForm.shelfLocation.trim() },
+        currentUser.userId
+      );
+      applyBookCopyToEditForm({
+        ...copy,
+        title: book.title,
+        author: book.author,
+        publisher: book.publisher,
+        category: book.category,
+        finePerDay: book.finePerDay,
+        loanPeriodDays: book.loanPeriodDays
+      });
       await refreshAvailableBooks(query);
-      setMessage(`${book.title} updated.`);
+      setMessage(`${book.title} copy ${copy.ssnNumber} updated.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to update book.");
     }
@@ -2503,15 +2559,15 @@ export default function App() {
 
             <div className="staff-issue-panel">
               <h3>Edit Book Copy Details</h3>
-              <p>Load by exact book/copy SSN or copy QR, then update title, author, publisher, category, fine, or loan period.</p>
+              <p>Load by exact copy SSN or copy QR, then update shared book details and this copy’s shelf location.</p>
               <div className="staff-issue-grid remove-copy-grid">
                 <input
-                  placeholder="Exact book SSN number"
+                  placeholder="Exact copy SSN number"
                   value={bookEditForm.ssnNumber}
                   onChange={(event) => setBookEditForm({ ...bookEditForm, ssnNumber: event.target.value })}
                 />
                 <button type="button" className="secondary-button" onClick={() => void handleLoadBookForEdit()}>
-                  Load Book
+                  Load Copy
                 </button>
               </div>
               <div className="staff-issue-grid remove-copy-grid">
@@ -2531,6 +2587,35 @@ export default function App() {
                 }}
               />
               <form className="management-form" onSubmit={(event) => void handleUpdateBook(event)}>
+                <label>
+                  Copy SSN
+                  <input readOnly value={bookEditForm.copySsnNumber} placeholder="Load a copy to see SSN" />
+                </label>
+                <label>
+                  Catalog Book SSN
+                  <input readOnly value={bookEditForm.bookSsnNumber} placeholder="Parent book SSN" />
+                </label>
+                <label>
+                  Accession Number
+                  <input readOnly value={bookEditForm.accessionNumber} placeholder="—" />
+                </label>
+                <label>
+                  Copy Status
+                  <input readOnly value={bookEditForm.status} placeholder="—" />
+                </label>
+                <label>
+                  Shelf Location
+                  <input
+                    required
+                    placeholder="Example: A1-R2-S3"
+                    value={bookEditForm.shelfLocation}
+                    onChange={(event) => setBookEditForm({ ...bookEditForm, shelfLocation: event.target.value })}
+                  />
+                </label>
+                <label>
+                  QR Value
+                  <input readOnly value={bookEditForm.qrCodeValue} placeholder="—" />
+                </label>
                 <label>
                   Book Title
                   <input
@@ -2581,7 +2666,7 @@ export default function App() {
                     onChange={(event) => setBookEditForm({ ...bookEditForm, loanPeriodDays: Number(event.target.value) })}
                   />
                 </label>
-                <button type="submit">Save Book Changes</button>
+                <button type="submit">Save Copy Changes</button>
               </form>
             </div>
 

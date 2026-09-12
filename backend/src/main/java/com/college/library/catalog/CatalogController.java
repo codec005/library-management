@@ -136,6 +136,23 @@ public class CatalogController {
         return ResponseEntity.ok(catalogService.getBookCopyByQrCode(value, actorUserId));
     }
 
+    @GetMapping("/copies/by-ssn")
+    ResponseEntity<BookCopySummary> getBookCopyBySsn(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @RequestParam String value
+    ) {
+        return ResponseEntity.ok(catalogService.getBookCopyBySsn(value, actorUserId));
+    }
+
+    @PutMapping("/copies/by-ssn")
+    ResponseEntity<BookCopySummary> updateBookCopyBySsn(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @RequestParam String value,
+        @Valid @RequestBody BookCopyUpdateRequest request
+    ) {
+        return ResponseEntity.ok(catalogService.updateBookCopyBySsn(value, request, actorUserId));
+    }
+
     @DeleteMapping("/copies/by-qr")
     ResponseEntity<Void> removeBookCopyByQrCode(
         @RequestHeader(ACTOR_HEADER) UUID actorUserId,

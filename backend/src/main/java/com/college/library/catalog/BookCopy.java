@@ -89,6 +89,10 @@ public class BookCopy extends BaseEntity {
         status = BookCopyStatus.AVAILABLE;
     }
 
+    public void updateShelfLocation(String shelfLocation) {
+        this.shelfLocation = shelfLocation;
+    }
+
     void assignTo(Book book) {
         this.book = book;
     }
