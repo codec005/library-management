@@ -21,8 +21,11 @@ import {
   updateBook,
   getBookCopyHistory,
   getStudentDetailsByIdentifier,
+  getUserDetailsByIdentifier,
   getUserQrCredential,
   getUserDetails,
+  resetUserPassword,
+  changeOwnPassword,
   issueBookByIdentifier,
   issueBookCopy,
   listAuditEvents,
@@ -141,6 +144,7 @@ const AUDIT_ACTION_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "USER_REMOVE", label: "User deleted" },
   { value: "USER_UPDATE", label: "User updated" },
   { value: "USER_QR_GENERATE", label: "User QR generated" },
+  { value: "PASSWORD_CHANGE", label: "Password changed" },
   { value: "BOOK_ADD", label: "Book added" },
   { value: "BOOK_UPDATE", label: "Book updated" },
   { value: "BOOK_REMOVE", label: "Book removed" },
@@ -245,6 +249,15 @@ export default function App() {
     password: "",
     role: "STUDENT"
   });
+  const [passwordResetUser, setPasswordResetUser] = useState<UserSummary | null>(null);
+  const [adminNewPassword, setAdminNewPassword] = useState("");
+  const [adminConfirmPassword, setAdminConfirmPassword] = useState("");
+  const [ownOldPassword, setOwnOldPassword] = useState("");
+  const [ownNewPassword, setOwnNewPassword] = useState("");
+  const [ownConfirmPassword, setOwnConfirmPassword] = useState("");
+  const [userQrLookupValue, setUserQrLookupValue] = useState("");
+  const [userLookupType, setUserLookupType] = useState<"ROLL_NUMBER" | "QR_CREDENTIAL">("ROLL_NUMBER");
+  const [scannedUserDetails, setScannedUserDetails] = useState<UserDetailsResponse | null>(null);
   const [userDirectoryQuery, setUserDirectoryQuery] = useState("");
   const [registrationForm, setRegistrationForm] = useState<UserRegistrationRequest>({
     fullName: "",
@@ -313,6 +326,8 @@ export default function App() {
   const canIssueToStudents = canManageBooks;
   const canViewStudentRecords = currentUser?.roles.some((role) => ["FACULTY", "LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canManageCollegeBranding = currentUser?.roles.some((role) => ["ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
+  const canChangeOwnPassword = currentUser?.roles.some((role) => ["FACULTY", "LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
+  const canLookupUsersByQr = canViewStudentRecords;
   const canShowUserRegistration = canRegisterUsers;
   const canViewUserDirectory = canManageStudents || isFaculty;
   const canShowManagement = canShowUserRegistration || canManageBooks || canViewUserDirectory;
@@ -350,6 +365,165 @@ export default function App() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    const focusableSelector = [
+      "a[href]",
+      "button:not([disabled])",
+      "input:not([disabled])",
+      "select:not([disabled])",
+      "textarea:not([disabled])",
+      '[tabindex]:not([tabindex="-1"])'
+    ].join(",");
+
+    function getActiveModal(): HTMLElement | null {
+      const backdrops = Array.from(document.querySelectorAll<HTMLElement>(".app-shell > .modal-backdrop"));
+      if (backdrops.length === 0) {
+        return null;
+      }
+
+      return backdrops.reduce((top, element) => {
+        const elementZ = Number(getComputedStyle(element).zIndex) || 0;
+        const topZ = Number(getComputedStyle(top).zIndex) || 0;
+        return elementZ >= topZ ? element : top;
+      });
+    }
+
+    function closeTopModal(): boolean {
+      if (message) {
+        setMessage("");
+        return true;
+      }
+      if (passwordResetUser) {
+        handleCloseAdminPasswordReset();
+        return true;
+      }
+      if (isIssuedBooksWindowOpen) {
+        setIsIssuedBooksWindowOpen(false);
+        return true;
+      }
+      if (selectedTitleGroup) {
+        setSelectedTitleGroup(null);
+        return true;
+      }
+      if (isBookHistoryOpen) {
+        setIsBookHistoryOpen(false);
+        return true;
+      }
+      if (isScanResultOpen) {
+        setIsScanResultOpen(false);
+        return true;
+      }
+      if (isBookQrWindowOpen) {
+        setIsBookQrWindowOpen(false);
+        return true;
+      }
+      if (isAddCopiesWindowOpen) {
+        setIsAddCopiesWindowOpen(false);
+        return true;
+      }
+      if (isAllIssuedBooksWindowOpen) {
+        setIsAllIssuedBooksWindowOpen(false);
+        return true;
+      }
+      if (isAuditLogsOpen) {
+        setIsAuditLogsOpen(false);
+        return true;
+      }
+      if (isUserDirectoryOpen) {
+        handleCloseUserDirectory();
+        return true;
+      }
+      if (isCatalogWindowOpen) {
+        setSelectedTitleGroup(null);
+        setIsCatalogWindowOpen(false);
+        return true;
+      }
+      return false;
+    }
+
+    function handleGlobalKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        if (closeTopModal()) {
+          event.preventDefault();
+        }
+        return;
+      }
+
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const activeModal = getActiveModal();
+      if (!activeModal) {
+        return;
+      }
+
+      const focusable = Array.from(activeModal.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter((element) => !element.hasAttribute("disabled") && element.getClientRects().length > 0);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const activeElement = document.activeElement as HTMLElement | null;
+
+      if (event.shiftKey && (activeElement === first || !activeModal.contains(activeElement))) {
+        event.preventDefault();
+        last.focus();
+        return;
+      }
+
+      if (!event.shiftKey && (activeElement === last || !activeModal.contains(activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [
+    message,
+    passwordResetUser,
+    isIssuedBooksWindowOpen,
+    selectedTitleGroup,
+    isBookHistoryOpen,
+    isScanResultOpen,
+    isBookQrWindowOpen,
+    isAddCopiesWindowOpen,
+    isAllIssuedBooksWindowOpen,
+    isAuditLogsOpen,
+    isUserDirectoryOpen,
+    isCatalogWindowOpen
+  ]);
+
+  useEffect(() => {
+    const activeModal = Array.from(document.querySelectorAll<HTMLElement>(".app-shell > .modal-backdrop"))
+      .sort((left, right) => (Number(getComputedStyle(right).zIndex) || 0) - (Number(getComputedStyle(left).zIndex) || 0))[0];
+    if (!activeModal) {
+      return;
+    }
+
+    const focusable = activeModal.querySelector<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+    );
+    focusable?.focus();
+  }, [
+    message,
+    passwordResetUser,
+    isIssuedBooksWindowOpen,
+    selectedTitleGroup,
+    isBookHistoryOpen,
+    isScanResultOpen,
+    isBookQrWindowOpen,
+    isAddCopiesWindowOpen,
+    isAllIssuedBooksWindowOpen,
+    isAuditLogsOpen,
+    isUserDirectoryOpen,
+    isCatalogWindowOpen
+  ]);
 
   async function refreshBranding() {
     try {
@@ -616,6 +790,15 @@ export default function App() {
     setSelectedUserDetails(null);
     setSelectedUserIssuedBooks([]);
     setGeneratedQr(null);
+    setPasswordResetUser(null);
+    setAdminNewPassword("");
+    setAdminConfirmPassword("");
+    setOwnOldPassword("");
+    setOwnNewPassword("");
+    setOwnConfirmPassword("");
+    setUserQrLookupValue("");
+    setUserLookupType("ROLL_NUMBER");
+    setScannedUserDetails(null);
     setIsUserDirectoryOpen(false);
     setIsIssuedBooksWindowOpen(false);
     setIsAllIssuedBooksWindowOpen(false);
@@ -1295,6 +1478,112 @@ export default function App() {
     }
   }
 
+  function handleOpenAdminPasswordReset(user: UserSummary) {
+    setPasswordResetUser(user);
+    setAdminNewPassword("");
+    setAdminConfirmPassword("");
+  }
+
+  function handleCloseAdminPasswordReset() {
+    setPasswordResetUser(null);
+    setAdminNewPassword("");
+    setAdminConfirmPassword("");
+  }
+
+  async function handleAdminPasswordReset(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+
+    if (!currentUser || !passwordResetUser || !canManageLibrarians) {
+      setMessage("Sign in as admin to reset passwords.");
+      return;
+    }
+
+    if (adminNewPassword.trim().length < 4) {
+      setMessage("New password must be at least 4 characters.");
+      return;
+    }
+
+    if (adminNewPassword !== adminConfirmPassword) {
+      setMessage("New password and confirmation do not match.");
+      return;
+    }
+
+    try {
+      await resetUserPassword(passwordResetUser.id, adminNewPassword.trim(), currentUser.userId);
+      setMessage(`Password updated for ${passwordResetUser.fullName}.`);
+      handleCloseAdminPasswordReset();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to reset password.");
+    }
+  }
+
+  async function handleChangeOwnPassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+
+    if (!currentUser || !canChangeOwnPassword) {
+      setMessage("Sign in with a staff account to change your password.");
+      return;
+    }
+
+    if (!ownOldPassword) {
+      setMessage("Enter your current password.");
+      return;
+    }
+
+    if (ownNewPassword.trim().length < 4) {
+      setMessage("New password must be at least 4 characters.");
+      return;
+    }
+
+    if (ownNewPassword !== ownConfirmPassword) {
+      setMessage("New password and confirmation do not match.");
+      return;
+    }
+
+    try {
+      await changeOwnPassword(ownOldPassword, ownNewPassword.trim(), currentUser.userId);
+      setOwnOldPassword("");
+      setOwnNewPassword("");
+      setOwnConfirmPassword("");
+      setMessage("Your password has been updated.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to change password.");
+    }
+  }
+
+  async function handleLookupUserDetails(
+    value = userQrLookupValue,
+    type: "ROLL_NUMBER" | "QR_CREDENTIAL" = userLookupType
+  ) {
+    setMessage("");
+
+    if (!currentUser || !canLookupUsersByQr) {
+      setMessage("Sign in as faculty, librarian, or admin to look up users.");
+      return;
+    }
+
+    const lookupValue = value.trim();
+    if (!lookupValue) {
+      setMessage(type === "QR_CREDENTIAL"
+        ? "Scan or enter a user QR credential first."
+        : "Enter a roll number or staff code first.");
+      return;
+    }
+
+    try {
+      const details = await getUserDetailsByIdentifier(type, lookupValue, currentUser.userId);
+      setScannedUserDetails(details);
+      setUserLookupType(type);
+      setUserQrLookupValue(lookupValue);
+      setMessage(`Loaded details for ${details.fullName}.`);
+    } catch (error) {
+      setScannedUserDetails(null);
+      setMessage(error instanceof Error ? error.message : "Unable to load user details.");
+    }
+  }
+
   async function handleOpenIssuedBooks() {
     if (!currentUser || !selectedUserDetails) {
       setMessage("Select a user before viewing issued books.");
@@ -1904,6 +2193,43 @@ export default function App() {
                 </div>
               ))}
             </dl>
+
+            {canChangeOwnPassword && (
+              <form className="management-form change-password-form" onSubmit={(event) => void handleChangeOwnPassword(event)}>
+                <h3>Change Password</h3>
+                <label>
+                  Current password
+                  <input
+                    required
+                    type="password"
+                    value={ownOldPassword}
+                    onChange={(event) => setOwnOldPassword(event.target.value)}
+                    placeholder="Enter current password"
+                  />
+                </label>
+                <label>
+                  New password
+                  <input
+                    required
+                    type="password"
+                    value={ownNewPassword}
+                    onChange={(event) => setOwnNewPassword(event.target.value)}
+                    placeholder="Enter new password"
+                  />
+                </label>
+                <label>
+                  Confirm new password
+                  <input
+                    required
+                    type="password"
+                    value={ownConfirmPassword}
+                    onChange={(event) => setOwnConfirmPassword(event.target.value)}
+                    placeholder="Re-enter new password"
+                  />
+                </label>
+                <button type="submit">Update Password</button>
+              </form>
+            )}
 
             {isBorrower && (
               <div className="issued-list">
@@ -2720,6 +3046,105 @@ export default function App() {
           </article>
         )}
 
+        {canLookupUsersByQr && (
+          <article className="panel registration-panel">
+            <div className="panel-title">
+              <QrCode size={22} />
+              <div>
+                <h2>View User Details</h2>
+                <p>Look up a user by roll number/staff code, or scan their QR code.</p>
+              </div>
+            </div>
+
+            <form
+              className="scan-form book-history-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleLookupUserDetails();
+              }}
+            >
+              <select
+                value={userLookupType}
+                onChange={(event) => {
+                  setUserLookupType(event.target.value as "ROLL_NUMBER" | "QR_CREDENTIAL");
+                  setScannedUserDetails(null);
+                }}
+              >
+                <option value="ROLL_NUMBER">Roll / Staff Code</option>
+                <option value="QR_CREDENTIAL">User QR</option>
+              </select>
+              <input
+                placeholder={
+                  userLookupType === "QR_CREDENTIAL"
+                    ? "Enter or scan user QR"
+                    : "Enter roll number or staff code"
+                }
+                value={userQrLookupValue}
+                onChange={(event) => setUserQrLookupValue(event.target.value)}
+              />
+              <button type="submit">Load User</button>
+            </form>
+            <QrScanner
+              label="Scan User QR"
+              onDetected={(value) => {
+                setUserLookupType("QR_CREDENTIAL");
+                setUserQrLookupValue(value);
+                void handleLookupUserDetails(value, "QR_CREDENTIAL");
+              }}
+            />
+
+            {scannedUserDetails && (
+              <div className="student-detail-card" style={{ marginTop: "1rem" }}>
+                <h3>{scannedUserDetails.fullName}</h3>
+                <dl className="details-list">
+                  <div>
+                    <dt>Department</dt>
+                    <dd>{scannedUserDetails.department}</dd>
+                  </div>
+                  <div>
+                    <dt>Role</dt>
+                    <dd>{scannedUserDetails.roles.join(", ")}</dd>
+                  </div>
+                  {scannedUserDetails.identifiers
+                    .filter((identifierItem) => identifierItem.type === "ROLL_NUMBER" || identifierItem.type === "COLLEGE_EMAIL")
+                    .map((identifierItem) => (
+                      <div key={`${identifierItem.type}-${identifierItem.value}`}>
+                        <dt>{formatIdentifierLabel(identifierItem.type, scannedUserDetails.roles)}</dt>
+                        <dd>{identifierItem.value}</dd>
+                      </div>
+                    ))}
+                </dl>
+                {canViewIssuedBooksFor(scannedUserDetails) && (
+                  <div className="action-row">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        setSelectedUserDetails(scannedUserDetails);
+                        void (async () => {
+                          if (!currentUser) {
+                            return;
+                          }
+                          try {
+                            setSelectedUserIssuedBooks(
+                              await listIssuedBooksForUser(scannedUserDetails.id, currentUser.userId)
+                            );
+                            setIsIssuedBooksWindowOpen(true);
+                          } catch (error) {
+                            setMessage(error instanceof Error ? error.message : "Unable to load issued books.");
+                          }
+                        })();
+                      }}
+                    >
+                      View Issued Books
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </article>
+        )}
+
         {canManageBooks && (
           <article className="panel book-history-panel">
             <div className="panel-title">
@@ -3367,6 +3792,11 @@ export default function App() {
                             View Details
                           </button>
                         )}
+                        {canManageLibrarians && !user.roles.includes("SUPER_ADMIN") && (
+                          <button type="button" onClick={() => handleOpenAdminPasswordReset(user)}>
+                            Change Password
+                          </button>
+                        )}
                         {canGenerateUserQr && (
                           <button type="button" onClick={() => void handleGenerateUserQr(user)}>
                             Generate QR
@@ -3614,6 +4044,55 @@ export default function App() {
                 );
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {passwordResetUser && (
+        <div
+          className="modal-backdrop secondary-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Change user password"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              handleCloseAdminPasswordReset();
+            }
+          }}
+        >
+          <div className="modal-panel">
+            <div className="modal-header">
+              <div>
+                <h2>Change Password</h2>
+                <p>Set a new password for {passwordResetUser.fullName}.</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={handleCloseAdminPasswordReset}>
+                Close
+              </button>
+            </div>
+            <form className="management-form" onSubmit={(event) => void handleAdminPasswordReset(event)}>
+              <label>
+                New password
+                <input
+                  required
+                  type="password"
+                  value={adminNewPassword}
+                  onChange={(event) => setAdminNewPassword(event.target.value)}
+                  placeholder="Enter new password"
+                />
+              </label>
+              <label>
+                Confirm new password
+                <input
+                  required
+                  type="password"
+                  value={adminConfirmPassword}
+                  onChange={(event) => setAdminConfirmPassword(event.target.value)}
+                  placeholder="Re-enter new password"
+                />
+              </label>
+              <button type="submit">Save Password</button>
+            </form>
           </div>
         </div>
       )}

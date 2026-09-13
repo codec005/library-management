@@ -21,5 +21,11 @@ public interface UserManagementUseCase {
 
     UserDetailsResponse getStudentDetailsByIdentifier(IdentifierType identifierType, String identifier, UUID actorUserId);
 
+    UserDetailsResponse getUserDetailsByIdentifier(IdentifierType identifierType, String identifier, UUID actorUserId);
+
+    void resetUserPassword(UUID userId, String newPassword, UUID actorUserId);
+
+    void changeOwnPassword(String oldPassword, String newPassword, UUID actorUserId);
+
     PageResponse<UserSummary> listUsers(UUID actorUserId, String query, int page, int size);
 }

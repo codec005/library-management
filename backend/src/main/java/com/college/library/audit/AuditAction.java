@@ -13,5 +13,6 @@ public enum AuditAction {
     BOOK_ADD,
     BOOK_UPDATE,
     BOOK_REMOVE,
-    USER_QR_GENERATE
+    USER_QR_GENERATE,
+    PASSWORD_CHANGE
 }

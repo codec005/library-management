@@ -46,6 +46,34 @@ public class UserManagementController {
         return ResponseEntity.ok(userManagementUseCase.getStudentDetailsByIdentifier(type, value, actorUserId));
     }
 
+    @GetMapping("/details-by-identifier")
+    ResponseEntity<UserDetailsResponse> getUserDetailsByIdentifier(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @RequestParam IdentifierType type,
+        @RequestParam String value
+    ) {
+        return ResponseEntity.ok(userManagementUseCase.getUserDetailsByIdentifier(type, value, actorUserId));
+    }
+
+    @PutMapping("/me/password")
+    ResponseEntity<Void> changeOwnPassword(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        userManagementUseCase.changeOwnPassword(request.oldPassword(), request.newPassword(), actorUserId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{userId}/password")
+    ResponseEntity<Void> resetUserPassword(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @PathVariable UUID userId,
+        @Valid @RequestBody AdminPasswordResetRequest request
+    ) {
+        userManagementUseCase.resetUserPassword(userId, request.newPassword(), actorUserId);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{userId}")
     ResponseEntity<UserDetailsResponse> getUserDetails(
         @RequestHeader(ACTOR_HEADER) UUID actorUserId,

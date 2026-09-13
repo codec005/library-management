@@ -406,6 +406,29 @@ export function getStudentDetailsByIdentifier(identifierType: IdentifierType, id
   });
 }
 
+export function getUserDetailsByIdentifier(identifierType: IdentifierType, identifier: string, actorUserId: string) {
+  const params = new URLSearchParams({ type: identifierType, value: identifier });
+  return request<UserDetailsResponse>(`/api/users/details-by-identifier?${params.toString()}`, {
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
+export function resetUserPassword(userId: string, newPassword: string, actorUserId: string) {
+  return request<void>(`/api/users/${userId}/password`, {
+    method: "PUT",
+    headers: { "X-Actor-User-Id": actorUserId },
+    body: JSON.stringify({ newPassword })
+  });
+}
+
+export function changeOwnPassword(oldPassword: string, newPassword: string, actorUserId: string) {
+  return request<void>("/api/users/me/password", {
+    method: "PUT",
+    headers: { "X-Actor-User-Id": actorUserId },
+    body: JSON.stringify({ oldPassword, newPassword })
+  });
+}
+
 export function scanBookCopy(type: ScanType, value: string, actorUserId?: string) {
   return request<BookCopyScanResponse>(`/api/catalog/scan?type=${type}&value=${encodeURIComponent(value)}`, {
     headers: actorUserId ? { "X-Actor-User-Id": actorUserId } : undefined

@@ -43,10 +43,19 @@ export default function QrScanner({ label, onDetected }: QrScannerProps) {
       }
     }
 
+    function handleScannerKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsOpen(false);
+      }
+    }
+
     startCamera();
+    window.addEventListener("keydown", handleScannerKeyDown);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("keydown", handleScannerKeyDown);
       stopCamera();
     };
   }, [isOpen]);

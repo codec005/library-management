@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -287,6 +288,94 @@ public class UserManagementService implements UserManagementUseCase {
         }
 
         return UserDetailsResponse.from(user);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserDetailsResponse getUserDetailsByIdentifier(IdentifierType identifierType, String identifier, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+
+        if (!hasAnyRole(actor, UserRole.FACULTY, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only faculty, librarian, or admin can look up users by QR");
+        }
+
+        UserAccount user = userIdentifierRepository.findByTypeAndValue(identifierType, cleanValue(identifier))
+            .filter(userIdentifier -> userIdentifier.getUser().isActive())
+            .orElseThrow(() -> new IllegalArgumentException("User not found for the scanned credential"))
+            .getUser();
+
+        return getUserDetails(user.getId(), actorUserId);
+    }
+
+    @Override
+    @Transactional
+    public void resetUserPassword(UUID userId, String newPassword, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+        if (!hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only admin can reset another user's password");
+        }
+
+        String cleanedPassword = cleanValue(newPassword);
+        if (cleanedPassword.length() < 4) {
+            throw new IllegalArgumentException("New password must be at least 4 characters");
+        }
+
+        UserAccount targetUser = userAccountRepository.findById(userId)
+            .filter(UserAccount::isActive)
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        if (targetUser.getRoles().contains(UserRole.SUPER_ADMIN) && !actor.getId().equals(targetUser.getId())) {
+            throw new IllegalStateException("Super admin passwords cannot be reset from this screen");
+        }
+
+        setUserPassword(targetUser, cleanedPassword);
+        auditLogger.record(
+            AuditAction.PASSWORD_CHANGE,
+            actor.getId(),
+            "UserAccount",
+            targetUser.getId(),
+            userLabel(targetUser) + " · password reset by admin"
+        );
+    }
+
+    @Override
+    @Transactional
+    public void changeOwnPassword(String oldPassword, String newPassword, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+        String cleanedOldPassword = oldPassword == null ? "" : oldPassword;
+        String cleanedNewPassword = cleanValue(newPassword);
+
+        if (cleanedNewPassword.length() < 4) {
+            throw new IllegalArgumentException("New password must be at least 4 characters");
+        }
+
+        UserCredential credential = userCredentialRepository.findByUser(actor)
+            .orElseThrow(() -> new IllegalStateException("No password is set on this account"));
+
+        if (!passwordEncoder.matches(cleanedOldPassword, credential.getPasswordHash())) {
+            throw new BadCredentialsException("Current password is incorrect");
+        }
+
+        credential.updatePasswordHash(passwordEncoder.encode(cleanedNewPassword));
+        userCredentialRepository.save(credential);
+        auditLogger.record(
+            AuditAction.PASSWORD_CHANGE,
+            actor.getId(),
+            "UserAccount",
+            actor.getId(),
+            userLabel(actor) + " · password changed by user"
+        );
+    }
+
+    private void setUserPassword(UserAccount user, String rawPassword) {
+        userCredentialRepository.findByUser(user)
+            .ifPresentOrElse(
+                credential -> {
+                    credential.updatePasswordHash(passwordEncoder.encode(rawPassword));
+                    userCredentialRepository.save(credential);
+                },
+                () -> userCredentialRepository.save(new UserCredential(user, passwordEncoder.encode(rawPassword)))
+            );
     }
 
     @Override

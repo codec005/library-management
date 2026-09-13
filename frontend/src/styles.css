@@ -497,10 +497,6 @@ label {
   width: fit-content;
 }
 
-.available-books-panel .copy-stats-note {
-  margin: 0.85rem 0 0;
-}
-
 .catalog-filters {
   display: grid;
   gap: 0.75rem;
@@ -816,6 +812,37 @@ button.book-row-button:focus-visible span {
   grid-column: 1 / -1;
 }
 
+.change-password-form {
+  border-top: 1px solid color-mix(in srgb, var(--ink, #1c1917) 12%, transparent);
+  grid-template-columns: 1fr;
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.change-password-form h3 {
+  grid-column: 1 / -1;
+  margin: 0 0 0.15rem;
+}
+
+.change-password-form label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.user-list .compact-actions {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(8.75rem, 1fr));
+  justify-content: stretch;
+}
+
+.user-list .compact-actions button {
+  min-height: 2.6rem;
+  padding: 0.55rem 0.7rem;
+  white-space: nowrap;
+  width: 100%;
+}
+
 .add-copies-window {
   max-width: 760px;
   width: min(760px, 100%);
@@ -1033,17 +1060,6 @@ button.book-row-button:focus-visible span {
 
 .user-list .compact-row > div:first-child {
   min-width: 0;
-}
-
-.user-list .compact-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  justify-content: stretch;
-}
-
-.user-list .compact-actions button {
-  padding: 0.55rem 0.65rem;
-  width: 100%;
 }
 
 .issued-list h3 {
