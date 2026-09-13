@@ -69,7 +69,16 @@ public interface BookRepository extends JpaRepository<Book, String> {
         Pageable pageable
     );
 
-    @Query("select distinct b.category from Book b where b.category is not null and b.category <> '' order by b.category")
+    @Query("""
+        select distinct b.category from Book b
+        where b.category is not null and b.category <> ''
+          and exists (
+            select 1 from BookCopy c
+            where c.book = b
+              and c.status <> com.college.library.catalog.BookCopyStatus.REMOVED
+          )
+        order by b.category
+        """)
     List<String> findDistinctCategories();
 
     Optional<Book> findBySsnNumberIgnoreCase(String ssnNumber);

@@ -353,10 +353,18 @@ export default function App() {
     ? ""
     : `${Math.floor(sessionRemainingSeconds / 60)}:${String(sessionRemainingSeconds % 60).padStart(2, "0")}`;
 
+  async function refreshBookCategories() {
+    try {
+      const categories = await listBookCategories();
+      setBookCategories(categories);
+      setCatalogCategory((current) => (current && !categories.includes(current) ? "" : current));
+    } catch {
+      setBookCategories([]);
+    }
+  }
+
   useEffect(() => {
-    listBookCategories()
-      .then(setBookCategories)
-      .catch(() => setBookCategories([]));
+    void refreshBookCategories();
     void refreshCopyStats();
     void refreshBranding();
 
@@ -848,6 +856,7 @@ export default function App() {
     setCatalogPage(0);
     setIsCatalogWindowOpen(true);
     try {
+      await refreshBookCategories();
       await refreshCatalogBooks("", 0, catalogPageSize, {
         category: "",
         author: "",
@@ -1786,9 +1795,7 @@ export default function App() {
     try {
       const book = await addBook(payload, currentUser.userId);
       await refreshCatalogIfOpen();
-      listBookCategories()
-        .then(setBookCategories)
-        .catch(() => undefined);
+      await refreshBookCategories();
       resetBookRegistrationForms();
 
       if (!generateQrAfterAdd) {
@@ -1959,6 +1966,7 @@ export default function App() {
         loanPeriodDays: book.loanPeriodDays
       });
       await refreshCatalogIfOpen();
+      await refreshBookCategories();
       setMessage(`${book.title} copy ${copy.ssnNumber} updated.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to update book.");
@@ -1980,6 +1988,7 @@ export default function App() {
     try {
       await removeBookCopyByQrCode(qrCodeValue, currentUser.userId);
       await refreshCatalogIfOpen();
+      await refreshBookCategories();
       setGeneratedBookQrs([]);
       setIsBookQrWindowOpen(false);
       setBookCopyQrValue("");
@@ -2004,6 +2013,7 @@ export default function App() {
     try {
       await removeBook(ssnNumber, currentUser.userId);
       await refreshCatalogIfOpen();
+      await refreshBookCategories();
       setBookSsnToRemove("");
       setMessage(`Book with SSN ${ssnNumber} deleted from the database.`);
     } catch (error) {
