@@ -847,16 +847,37 @@ button.book-row-button:focus-visible span {
 
 .user-list .compact-actions {
   display: grid;
-  gap: 0.55rem;
-  grid-template-columns: repeat(auto-fit, minmax(8.75rem, 1fr));
-  justify-content: stretch;
+  gap: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: calc((2.6rem * 2) + 0.5rem);
+  width: 100%;
 }
 
 .user-list .compact-actions button {
+  background: #dbeafe;
+  box-shadow: none;
+  color: #1e40af;
   min-height: 2.6rem;
-  padding: 0.55rem 0.7rem;
+  padding: 0.5rem 0.65rem;
   white-space: nowrap;
   width: 100%;
+}
+
+.user-list .compact-actions button:hover {
+  background: #bfdbfe;
+  box-shadow: none;
+  color: #1e3a8a;
+  transform: none;
+}
+
+.user-list .compact-actions button.danger-button {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.user-list .compact-actions button.danger-button:hover {
+  background: #fecaca;
+  color: #7f1d1d;
 }
 
 .add-copies-window {
