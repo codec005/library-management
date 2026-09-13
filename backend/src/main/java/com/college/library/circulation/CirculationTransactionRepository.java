@@ -17,6 +17,24 @@ public interface CirculationTransactionRepository extends JpaRepository<Circulat
 
     List<CirculationTransaction> findByBorrowerAndStatus(UserAccount borrower, CirculationStatus status);
 
+    @Query("""
+        select t from CirculationTransaction t
+        join fetch t.bookCopy copy
+        join fetch copy.book book
+        where t.borrower = :borrower
+          and (
+            t.status = com.college.library.circulation.CirculationStatus.ISSUED
+            or (
+              t.status = com.college.library.circulation.CirculationStatus.RETURNED
+              and t.fineReset = false
+              and t.assessedFineAmount is not null
+              and t.assessedFineAmount > 0
+            )
+          )
+        order by t.issuedOn desc, t.createdAt desc
+        """)
+    List<CirculationTransaction> findActiveLoansAndOutstandingFines(@Param("borrower") UserAccount borrower);
+
     Page<CirculationTransaction> findByStatus(CirculationStatus status, Pageable pageable);
 
     @Query("""

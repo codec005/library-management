@@ -33,7 +33,10 @@ public record CirculationResponse(
         LocalDate fineUntil = transaction.getReturnedOn() == null ? LocalDate.now() : transaction.getReturnedOn();
         long overdueDays = Math.max(0, ChronoUnit.DAYS.between(transaction.getDueOn(), fineUntil));
         long finePerDay = transaction.getBookCopy().getBook().getFinePerDay();
-        long fineAmount = transaction.isFineReset() ? 0 : overdueDays * finePerDay;
+        long computedFineAmount = transaction.isFineReset() ? 0 : overdueDays * finePerDay;
+        long fineAmount = transaction.getAssessedFineAmount() != null
+            ? transaction.getAssessedFineAmount()
+            : computedFineAmount;
         int loanDays = (int) ChronoUnit.DAYS.between(transaction.getIssuedOn(), transaction.getDueOn());
 
         return new CirculationResponse(
@@ -56,5 +59,14 @@ public record CirculationResponse(
             finePerDay,
             fineAmount
         );
+    }
+
+    static long computeFineAmount(CirculationTransaction transaction) {
+        if (transaction.isFineReset()) {
+            return 0L;
+        }
+        LocalDate fineUntil = transaction.getReturnedOn() == null ? LocalDate.now() : transaction.getReturnedOn();
+        long overdueDays = Math.max(0, ChronoUnit.DAYS.between(transaction.getDueOn(), fineUntil));
+        return overdueDays * transaction.getBookCopy().getBook().getFinePerDay();
     }
 }

@@ -43,6 +43,8 @@ public class CirculationTransaction extends BaseEntity {
     @Column(nullable = false)
     private boolean fineReset = false;
 
+    private Long assessedFineAmount;
+
     protected CirculationTransaction() {
     }
 
@@ -86,12 +88,22 @@ public class CirculationTransaction extends BaseEntity {
         return fineReset;
     }
 
-    public void markReturned(LocalDate returnedOn, boolean resetFine) {
+    public Long getAssessedFineAmount() {
+        return assessedFineAmount;
+    }
+
+    public void markReturned(LocalDate returnedOn, boolean resetFine, long assessedFineAmount) {
         this.returnedOn = returnedOn;
         this.returnedAt = Instant.now();
         this.status = CirculationStatus.RETURNED;
         this.fineReset = resetFine;
+        this.assessedFineAmount = resetFine ? 0L : Math.max(0L, assessedFineAmount);
         this.bookCopy.markAvailable();
+    }
+
+    public void clearOutstandingFine() {
+        this.fineReset = true;
+        this.assessedFineAmount = 0L;
     }
 
     public void renew(int additionalDays) {

@@ -18,6 +18,8 @@ public interface CirculationUseCase {
 
     CirculationResponse renewByIdentifier(RenewByIdentifierRequest request, UUID actorUserId);
 
+    CirculationResponse clearOutstandingFine(UUID transactionId, UUID actorUserId);
+
     PageResponse<CirculationResponse> listAllIssuedBooks(UUID actorUserId, int page, int size);
 
     List<CirculationResponse> listIssuedBooksForUser(UUID borrowerId, UUID actorUserId);

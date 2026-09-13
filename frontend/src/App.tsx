@@ -37,6 +37,7 @@ import {
   login,
   renewTransaction,
   renewBookByIdentifier,
+  clearOutstandingFine,
   registerUser,
   getBookCopyByQrCode,
   getBookCopyBySsn,
@@ -1326,6 +1327,21 @@ export default function App() {
       setMessage(`${transaction.bookTitle} renewed by ${renewalDays} day(s) until ${transaction.dueOn}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Renewal failed.");
+    }
+  }
+
+  async function handleClearOutstandingFine(book: CirculationResponse) {
+    if (!currentUser || !selectedUserDetails) {
+      setMessage("Select a student before clearing a fine.");
+      return;
+    }
+
+    try {
+      const transaction = await clearOutstandingFine(book.transactionId, currentUser.userId);
+      setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
+      setMessage(`Fine cleared for ${transaction.bookTitle}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not clear fine.");
     }
   }
 
@@ -4123,7 +4139,7 @@ export default function App() {
             <div className="issued-list">
               <div className="total-fine">Total Fine: Rs {selectedUserTotalFine}</div>
               {selectedUserIssuedBooks.length === 0 ? (
-                <p>No books are currently issued to this user.</p>
+                <p>No active loans or outstanding fines for this user.</p>
               ) : (
                 selectedUserIssuedBooks.map((book) => (
                   <div className="compact-row" key={book.transactionId}>
@@ -4149,7 +4165,7 @@ export default function App() {
                     </div>
                     <div className="issued-book-actions">
                       <span className="availability">Fine Rs {book.fineAmount}</span>
-                      {canIssueToStudents && (
+                      {canIssueToStudents && book.status === "ISSUED" && (
                         <div className="renew-panel">
                           <div className="renew-panel-controls">
                             <label htmlFor={`renew-days-${book.transactionId}`}>Extend by</label>
@@ -4173,7 +4189,7 @@ export default function App() {
                           </button>
                         </div>
                       )}
-                      {canIssueToStudents && (
+                      {canIssueToStudents && book.status === "ISSUED" && (
                         <div className="return-panel">
                           {book.fineAmount > 0 && (
                             <label className="inline-checkbox">
@@ -4192,6 +4208,13 @@ export default function App() {
                           )}
                           <button type="button" className="danger-button" onClick={() => void handleReturnIssuedBook(book)}>
                             Return book
+                          </button>
+                        </div>
+                      )}
+                      {canIssueToStudents && book.status === "RETURNED" && book.fineAmount > 0 && (
+                        <div className="return-panel">
+                          <button type="button" onClick={() => void handleClearOutstandingFine(book)}>
+                            Clear fine
                           </button>
                         </div>
                       )}

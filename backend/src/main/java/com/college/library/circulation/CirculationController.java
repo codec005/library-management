@@ -70,6 +70,14 @@ public class CirculationController {
         return ResponseEntity.ok(circulationUseCase.renew(transactionId, renewalDays, actorUserId));
     }
 
+    @PostMapping("/transactions/{transactionId}/clear-fine")
+    ResponseEntity<CirculationResponse> clearOutstandingFine(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @PathVariable UUID transactionId
+    ) {
+        return ResponseEntity.ok(circulationUseCase.clearOutstandingFine(transactionId, actorUserId));
+    }
+
     @PostMapping("/renew/by-identifier")
     ResponseEntity<CirculationResponse> renewByIdentifier(
         @RequestHeader(ACTOR_HEADER) UUID actorUserId,

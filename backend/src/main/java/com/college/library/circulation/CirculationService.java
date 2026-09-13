@@ -241,7 +241,7 @@ public class CirculationService implements CirculationUseCase {
         boolean resetFine,
         UserAccount actor
     ) {
-        transaction.markReturned(LocalDate.now(), resetFine);
+        transaction.markReturned(LocalDate.now(), resetFine, CirculationResponse.computeFineAmount(transaction));
         UserAccount borrower = transaction.getBorrower();
         String auditDetails = borrowerLabel(borrower) + " · " + copy.getAccessionNumber()
             + (resetFine ? " (fine reset)" : "");
@@ -251,6 +251,39 @@ public class CirculationService implements CirculationUseCase {
             "BookCopy",
             copy.getId(),
             auditDetails
+        );
+        return CirculationResponse.from(transaction);
+    }
+
+    @Override
+    @Transactional
+    public CirculationResponse clearOutstandingFine(UUID transactionId, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+
+        if (!hasAnyRole(actor, UserRole.LIBRARIAN, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only librarian or admin can clear outstanding fines");
+        }
+
+        CirculationTransaction transaction = circulationTransactionRepository.findById(transactionId)
+            .orElseThrow(() -> new IllegalArgumentException("Transaction not found"));
+
+        if (transaction.getStatus() != CirculationStatus.RETURNED) {
+            throw new IllegalStateException("Only returned loans can have outstanding fines cleared");
+        }
+        if (transaction.isFineReset()
+            || transaction.getAssessedFineAmount() == null
+            || transaction.getAssessedFineAmount() <= 0) {
+            throw new IllegalStateException("This loan has no outstanding fine to clear");
+        }
+
+        long clearedAmount = transaction.getAssessedFineAmount();
+        transaction.clearOutstandingFine();
+        auditLogger.record(
+            AuditAction.BOOK_RETURN,
+            actor.getId(),
+            "CirculationTransaction",
+            transaction.getId(),
+            borrowerLabel(transaction.getBorrower()) + " · fine cleared Rs " + clearedAmount
         );
         return CirculationResponse.from(transaction);
     }
@@ -319,6 +352,13 @@ public class CirculationService implements CirculationUseCase {
         Integer renewalDays,
         UserAccount actor
     ) {
+        long outstandingFine = CirculationResponse.computeFineAmount(transaction);
+        if (outstandingFine > 0) {
+            throw new IllegalStateException(
+                "Cannot renew this loan while a fine of Rs " + outstandingFine + " is due. Return the book or clear the fine first."
+            );
+        }
+
         int maxRenewalDays = transaction.getBookCopy().getBook().getLoanPeriodDays();
         int days = renewalDays == null ? Math.min(DEFAULT_RENEWAL_DAYS, maxRenewalDays) : renewalDays;
         if (days < 1 || days > maxRenewalDays) {
@@ -387,7 +427,7 @@ public class CirculationService implements CirculationUseCase {
             throw new IllegalStateException("You are not allowed to view issued books for this user");
         }
 
-        return circulationTransactionRepository.findByBorrowerAndStatus(borrower, CirculationStatus.ISSUED)
+        return circulationTransactionRepository.findActiveLoansAndOutstandingFines(borrower)
             .stream()
             .map(this::toCirculationResponse)
             .toList();

@@ -506,6 +506,13 @@ export function renewTransaction(transactionId: string, actorUserId: string, ren
   });
 }
 
+export function clearOutstandingFine(transactionId: string, actorUserId: string) {
+  return request<CirculationResponse>(`/api/circulation/transactions/${transactionId}/clear-fine`, {
+    method: "POST",
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
 export function renewBookByIdentifier(
   actorUserId: string,
   borrowerIdentifierType: IdentifierType,
