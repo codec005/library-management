@@ -616,6 +616,13 @@ export function removeBookCopyByQrCode(qrCodeValue: string, actorUserId: string)
   });
 }
 
+export function removeBookCopyBySsn(ssnNumber: string, actorUserId: string) {
+  return request<void>(`/api/catalog/copies/by-ssn?value=${encodeURIComponent(ssnNumber)}`, {
+    method: "DELETE",
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
 export function listAuditEvents(
   actorUserId: string,
   fromDate?: string,

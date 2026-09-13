@@ -53,4 +53,6 @@ public interface CatalogService {
     BookCopySummary updateBookCopyBySsn(String ssnNumber, BookCopyUpdateRequest request, UUID actorUserId);
 
     void removeBookCopyByQrCode(String qrCodeValue, UUID actorUserId);
+
+    void removeBookCopyBySsn(String ssnNumber, UUID actorUserId);
 }

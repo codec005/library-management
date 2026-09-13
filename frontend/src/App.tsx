@@ -44,8 +44,8 @@ import {
   getCatalogCopyStats,
   getBranding,
   updateBranding,
-  removeBook,
   removeBookCopyByQrCode,
+  removeBookCopyBySsn,
   removeUser,
   returnBookByIdentifier,
   returnBookCopy,
@@ -224,7 +224,8 @@ export default function App() {
   const [allIssuedTotalElements, setAllIssuedTotalElements] = useState(0);
   const [isBookQrWindowOpen, setIsBookQrWindowOpen] = useState(false);
   const [bookCopyQrValue, setBookCopyQrValue] = useState("");
-  const [bookSsnToRemove, setBookSsnToRemove] = useState("");
+  const [bookCopySsnToRemove, setBookCopySsnToRemove] = useState("");
+  const [removeCopyMethod, setRemoveCopyMethod] = useState<"QR" | "SSN">("QR");
   const [generateQrAfterAdd, setGenerateQrAfterAdd] = useState(false);
   const [generatedBookQrs, setGeneratedBookQrs] = useState<Array<BookCopySummary & { dataUrl: string }>>([]);
   const [isAuditLogsOpen, setIsAuditLogsOpen] = useState(false);
@@ -1973,51 +1974,38 @@ export default function App() {
     }
   }
 
-  async function handleRemoveBookCopyByQr() {
+  async function handleRemoveBookCopy() {
     if (!currentUser) {
       setMessage("Sign in as librarian or admin to remove books.");
       return;
     }
 
-    const qrCodeValue = bookCopyQrValue.trim();
-    if (!qrCodeValue) {
-      setMessage("Enter the exact book QR code value first.");
-      return;
-    }
-
     try {
-      await removeBookCopyByQrCode(qrCodeValue, currentUser.userId);
+      if (removeCopyMethod === "QR") {
+        const qrCodeValue = bookCopyQrValue.trim();
+        if (!qrCodeValue) {
+          setMessage("Enter or scan the book copy QR code first.");
+          return;
+        }
+        await removeBookCopyByQrCode(qrCodeValue, currentUser.userId);
+        setBookCopyQrValue("");
+      } else {
+        const ssnNumber = bookCopySsnToRemove.trim();
+        if (!ssnNumber) {
+          setMessage("Enter the book copy SSN first.");
+          return;
+        }
+        await removeBookCopyBySsn(ssnNumber, currentUser.userId);
+        setBookCopySsnToRemove("");
+      }
+
       await refreshCatalogIfOpen();
       await refreshBookCategories();
       setGeneratedBookQrs([]);
       setIsBookQrWindowOpen(false);
-      setBookCopyQrValue("");
       setMessage("Book copy removed from catalog.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Book copy removal failed.");
-    }
-  }
-
-  async function handleRemoveBookBySsn() {
-    if (!currentUser) {
-      setMessage("Sign in as librarian or admin to remove books.");
-      return;
-    }
-
-    const ssnNumber = bookSsnToRemove.trim();
-    if (!ssnNumber) {
-      setMessage("Enter the book SSN number first.");
-      return;
-    }
-
-    try {
-      await removeBook(ssnNumber, currentUser.userId);
-      await refreshCatalogIfOpen();
-      await refreshBookCategories();
-      setBookSsnToRemove("");
-      setMessage(`Book with SSN ${ssnNumber} deleted from the database.`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Book removal failed.");
     }
   }
 
@@ -3035,39 +3023,42 @@ export default function App() {
             )}
 
             <div className="staff-issue-panel">
-              <h3>Remove Book By SSN</h3>
-              <p>Enter the book SSN number to delete the book and all its copies from the database.</p>
-              <div className="staff-issue-grid remove-copy-grid">
-                <input
-                  placeholder="Example: 9780132350884"
-                  value={bookSsnToRemove}
-                  onChange={(event) => setBookSsnToRemove(event.target.value)}
-                />
-                <button type="button" className="danger-button" onClick={() => void handleRemoveBookBySsn()}>
-                  Delete Book
-                </button>
-              </div>
-            </div>
-
-            <div className="staff-issue-panel">
-              <h3>Remove Existing Copy</h3>
-              <p>Enter or scan the exact QR value for the physical copy to remove.</p>
-              <div className="staff-issue-grid remove-copy-grid">
-                <input
-                  placeholder="Example: BOOK-QR-9780132350884"
-                  value={bookCopyQrValue}
-                  onChange={(event) => setBookCopyQrValue(event.target.value)}
-                />
-                <button type="button" className="danger-button" onClick={() => void handleRemoveBookCopyByQr()}>
+              <h3>Remove Book Copy</h3>
+              <p>Remove one physical copy by QR code or by that copy&apos;s SSN.</p>
+              <div className="staff-issue-grid remove-copy-grid remove-copy-method-grid">
+                <select
+                  value={removeCopyMethod}
+                  onChange={(event) => setRemoveCopyMethod(event.target.value as "QR" | "SSN")}
+                  aria-label="Remove copy method"
+                >
+                  <option value="QR">By QR</option>
+                  <option value="SSN">By Copy SSN</option>
+                </select>
+                {removeCopyMethod === "QR" ? (
+                  <input
+                    placeholder="Scan or enter book copy QR"
+                    value={bookCopyQrValue}
+                    onChange={(event) => setBookCopyQrValue(event.target.value)}
+                  />
+                ) : (
+                  <input
+                    placeholder="Enter book copy SSN"
+                    value={bookCopySsnToRemove}
+                    onChange={(event) => setBookCopySsnToRemove(event.target.value)}
+                  />
+                )}
+                <button type="button" className="danger-button" onClick={() => void handleRemoveBookCopy()}>
                   Remove Copy
                 </button>
               </div>
-              <QrScanner
-                label="Scan Copy QR"
-                onDetected={(value) => {
-                  setBookCopyQrValue(value);
-                }}
-              />
+              {removeCopyMethod === "QR" && (
+                <QrScanner
+                  label="Scan Copy QR"
+                  onDetected={(value) => {
+                    setBookCopyQrValue(value);
+                  }}
+                />
+              )}
             </div>
           </article>
         )}

@@ -443,7 +443,19 @@ public class DefaultCatalogService implements CatalogService {
         UserAccount actor = findCatalogManager(actorUserId);
         BookCopy copy = bookCopyRepository.findByQrCodeValueForUpdate(qrCodeValue)
             .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
+        removeBookCopy(copy, actor);
+    }
 
+    @Override
+    @Transactional
+    public void removeBookCopyBySsn(String ssnNumber, UUID actorUserId) {
+        UserAccount actor = findCatalogManager(actorUserId);
+        BookCopy copy = bookCopyRepository.findBySsnNumberForUpdate(ssnNumber.trim())
+            .orElseThrow(() -> new IllegalArgumentException("Book copy not found"));
+        removeBookCopy(copy, actor);
+    }
+
+    private void removeBookCopy(BookCopy copy, UserAccount actor) {
         if (copy.getStatus() == BookCopyStatus.ISSUED) {
             throw new IllegalStateException("Issued book copies must be returned before removal");
         }

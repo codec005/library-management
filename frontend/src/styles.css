@@ -1481,6 +1481,10 @@ button.book-row-button:focus-visible span {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.remove-copy-method-grid {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
 .remove-copy-grid button,
 .issued-books-window .renew-panel button,
 .issued-books-window .return-panel button {
@@ -1724,6 +1728,10 @@ button.book-row-button:focus-visible span {
   .management-form,
   .staff-issue-grid,
   .remove-copy-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .remove-copy-method-grid {
     grid-template-columns: 1fr;
   }
 

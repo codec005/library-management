@@ -166,4 +166,13 @@ public class CatalogController {
         catalogService.removeBookCopyByQrCode(value, actorUserId);
         return ResponseEntity.noContent().build();
     }
+
+    @DeleteMapping("/copies/by-ssn")
+    ResponseEntity<Void> removeBookCopyBySsn(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @RequestParam String value
+    ) {
+        catalogService.removeBookCopyBySsn(value, actorUserId);
+        return ResponseEntity.noContent().build();
+    }
 }
