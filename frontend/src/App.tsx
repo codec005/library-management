@@ -1443,8 +1443,12 @@ export default function App() {
       return;
     }
 
-    if (registrationForm.role !== "STUDENT" && !registrationForm.password?.trim()) {
-      setMessage("Password is required for faculty, librarian, and admin accounts.");
+    if ((registrationForm.role !== "STUDENT" || studentPasswordRequired) && !registrationForm.password?.trim()) {
+      setMessage(
+        registrationForm.role === "STUDENT"
+          ? "Password is required for student accounts when student password login is enabled."
+          : "Password is required for faculty, librarian, and admin accounts."
+      );
       return;
     }
 
@@ -1452,7 +1456,7 @@ export default function App() {
       const payload = {
         ...registrationForm,
         collegeEmail: registrationForm.collegeEmail || undefined,
-        password: registrationForm.role === "STUDENT"
+        password: registrationForm.role === "STUDENT" && !studentPasswordRequired
           ? undefined
           : registrationForm.password?.trim()
       };
@@ -2912,9 +2916,9 @@ export default function App() {
               value={registrationForm.collegeEmail}
               onChange={(event) => setRegistrationForm({ ...registrationForm, collegeEmail: event.target.value })}
             />
-            {registrationForm.role !== "STUDENT" && (
+            {(registrationForm.role !== "STUDENT" || studentPasswordRequired) && (
               <input
-                placeholder="Password / PIN"
+                placeholder={registrationForm.role === "STUDENT" ? "Student password" : "Password / PIN"}
                 type="password"
                 value={registrationForm.password ?? ""}
                 onChange={(event) => setRegistrationForm({ ...registrationForm, password: event.target.value })}
@@ -2926,7 +2930,10 @@ export default function App() {
                 setRegistrationForm({
                   ...registrationForm,
                   role: event.target.value as UserRegistrationRequest["role"],
-                  password: event.target.value === "STUDENT" ? "" : registrationForm.password
+                  password:
+                    event.target.value === "STUDENT" && !studentPasswordRequired
+                      ? ""
+                      : registrationForm.password
                 })
               }
             >
@@ -4044,15 +4051,17 @@ export default function App() {
                             onChange={(event) => setUserEditForm({ ...userEditForm, collegeEmail: event.target.value })}
                           />
                         </label>
-                        <label>
-                          New password optional
-                          <input
-                            type="password"
-                            placeholder="Leave blank to keep current password"
-                            value={userEditForm.password ?? ""}
-                            onChange={(event) => setUserEditForm({ ...userEditForm, password: event.target.value })}
-                          />
-                        </label>
+                        {(!selectedUserDetails.roles.includes("STUDENT") || studentPasswordRequired) && (
+                          <label>
+                            New password optional
+                            <input
+                              type="password"
+                              placeholder="Leave blank to keep current password"
+                              value={userEditForm.password ?? ""}
+                              onChange={(event) => setUserEditForm({ ...userEditForm, password: event.target.value })}
+                            />
+                          </label>
+                        )}
                         <label>
                           Role
                           <select

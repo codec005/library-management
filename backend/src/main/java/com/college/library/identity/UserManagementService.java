@@ -135,6 +135,9 @@ public class UserManagementService implements UserManagementUseCase {
         targetUser.replaceRoles(Set.of(request.role()));
 
         if (!password.isBlank()) {
+            if (request.role() == UserRole.STUDENT && !appSettingsService.isStudentPasswordRequired()) {
+                throw new IllegalStateException("Student password login is disabled, so student passwords cannot be changed");
+            }
             userCredentialRepository.findByUser(targetUser)
                 .ifPresentOrElse(
                     credential -> {
@@ -444,6 +447,12 @@ public class UserManagementService implements UserManagementUseCase {
         String password = request.password() == null ? "" : request.password().trim();
 
         if (request.role() == UserRole.STUDENT) {
+            if (appSettingsService.isStudentPasswordRequired()) {
+                if (password.isBlank()) {
+                    throw new IllegalArgumentException("Password is required for student accounts when student password login is enabled");
+                }
+                return password;
+            }
             return password.isBlank() ? "student123" : password;
         }
 
