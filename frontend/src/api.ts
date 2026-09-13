@@ -316,6 +316,10 @@ export interface BrandingResponse {
   logoUrl: string;
 }
 
+export interface AppSettingsResponse {
+  studentPasswordRequired: boolean;
+}
+
 export function getBranding() {
   return request<BrandingResponse>("/api/branding");
 }
@@ -331,6 +335,21 @@ export function updateBranding(
       collegeName: payload.collegeName,
       logoDataUrl: payload.logoDataUrl ?? ""
     })
+  });
+}
+
+export function getAppSettings() {
+  return request<AppSettingsResponse>("/api/settings");
+}
+
+export function updateAppSettings(
+  payload: { studentPasswordRequired: boolean },
+  actorUserId: string
+) {
+  return request<AppSettingsResponse>("/api/settings", {
+    method: "PUT",
+    headers: { "X-Actor-User-Id": actorUserId },
+    body: JSON.stringify(payload)
   });
 }
 

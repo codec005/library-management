@@ -5,6 +5,7 @@ import com.college.library.audit.AuditLogger;
 import com.college.library.circulation.CirculationStatus;
 import com.college.library.circulation.CirculationTransactionRepository;
 import com.college.library.common.PageResponse;
+import com.college.library.settings.AppSettingsService;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -23,6 +24,7 @@ public class UserManagementService implements UserManagementUseCase {
     private final CirculationTransactionRepository circulationTransactionRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogger auditLogger;
+    private final AppSettingsService appSettingsService;
 
     public UserManagementService(
         UserAccountRepository userAccountRepository,
@@ -30,7 +32,8 @@ public class UserManagementService implements UserManagementUseCase {
         UserCredentialRepository userCredentialRepository,
         CirculationTransactionRepository circulationTransactionRepository,
         PasswordEncoder passwordEncoder,
-        AuditLogger auditLogger
+        AuditLogger auditLogger,
+        AppSettingsService appSettingsService
     ) {
         this.userAccountRepository = userAccountRepository;
         this.userIdentifierRepository = userIdentifierRepository;
@@ -38,6 +41,7 @@ public class UserManagementService implements UserManagementUseCase {
         this.circulationTransactionRepository = circulationTransactionRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditLogger = auditLogger;
+        this.appSettingsService = appSettingsService;
     }
 
     @Override
@@ -328,6 +332,10 @@ public class UserManagementService implements UserManagementUseCase {
             throw new IllegalStateException("Super admin passwords cannot be reset from this screen");
         }
 
+        if (targetUser.getRoles().contains(UserRole.STUDENT) && !appSettingsService.isStudentPasswordRequired()) {
+            throw new IllegalStateException("Student password login is disabled, so student passwords cannot be changed");
+        }
+
         setUserPassword(targetUser, cleanedPassword);
         auditLogger.record(
             AuditAction.PASSWORD_CHANGE,
@@ -342,6 +350,10 @@ public class UserManagementService implements UserManagementUseCase {
     @Transactional
     public void changeOwnPassword(String oldPassword, String newPassword, UUID actorUserId) {
         UserAccount actor = findActor(actorUserId);
+        if (actor.getRoles().contains(UserRole.STUDENT) && !appSettingsService.isStudentPasswordRequired()) {
+            throw new IllegalStateException("Student password login is disabled, so passwords cannot be changed");
+        }
+
         String cleanedOldPassword = oldPassword == null ? "" : oldPassword;
         String cleanedNewPassword = cleanValue(newPassword);
 

@@ -7,6 +7,7 @@ import com.college.library.identity.IdentifierType;
 import com.college.library.identity.UserAccount;
 import com.college.library.identity.UserCredentialRepository;
 import com.college.library.identity.UserRole;
+import com.college.library.settings.AppSettingsService;
 import java.util.UUID;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -16,28 +17,30 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuthService implements AuthUseCase {
 
-    private final IdentityResolver identityResolver; //resolver meaning it will fetch the login method(roll number /college email) and login username then using this it will create an actual user and search this user in database
-    // then from database it will fetch actual user
-    private final UserCredentialRepository userCredentialRepository; // all classes ending with repository talk to database, we do this to reduce code changes whenever new db is being used
+    private final IdentityResolver identityResolver;
+    private final UserCredentialRepository userCredentialRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogger auditLogger;
+    private final AppSettingsService appSettingsService;
 
     public AuthService(
         IdentityResolver identityResolver,
-        UserCredentialRepository userCredentialRepository, //
+        UserCredentialRepository userCredentialRepository,
         PasswordEncoder passwordEncoder,
-        AuditLogger auditLogger
+        AuditLogger auditLogger,
+        AppSettingsService appSettingsService
     ) {
         this.identityResolver = identityResolver;
         this.userCredentialRepository = userCredentialRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditLogger = auditLogger;
+        this.appSettingsService = appSettingsService;
     }
 
     @Override
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        UserAccount user = identityResolver.resolve(request.identifierType(), cleanValue(request.identifier()))//user account is another class which is the actual user understood by backend
+        UserAccount user = identityResolver.resolve(request.identifierType(), cleanValue(request.identifier()))
             .orElseThrow(() -> new BadCredentialsException("Invalid login details"))
             .getUser();
 
@@ -45,7 +48,8 @@ public class AuthService implements AuthUseCase {
             throw new BadCredentialsException("Account is inactive");
         }
 
-        if (user.getRoles().contains(UserRole.STUDENT)) {
+        boolean isStudent = user.getRoles().contains(UserRole.STUDENT);
+        if (isStudent && !appSettingsService.isStudentPasswordRequired()) {
             throw new BadCredentialsException("Students can login only through QR scan");
         }
 
@@ -57,7 +61,13 @@ public class AuthService implements AuthUseCase {
             throw new BadCredentialsException("Invalid login details");
         }
 
-        auditLogger.record(AuditAction.PASSWORD_LOGIN, user.getId(), "UserAccount", user.getId(), user.getFullName() + " · " + request.identifierType().name());
+        auditLogger.record(
+            AuditAction.PASSWORD_LOGIN,
+            user.getId(),
+            "UserAccount",
+            user.getId(),
+            user.getFullName() + " · " + request.identifierType().name()
+        );
         return new LoginResponse(user.getId(), user.getFullName(), user.getRoles(), "dev-token-" + UUID.randomUUID());
     }
 
@@ -81,7 +91,19 @@ public class AuthService implements AuthUseCase {
             throw new BadCredentialsException("Staff must use ID and password login");
         }
 
-        auditLogger.record(AuditAction.SCAN_LOGIN, user.getId(), "UserAccount", user.getId(), user.getFullName() + " · " + request.identifierType().name());
+        if (appSettingsService.isStudentPasswordRequired()) {
+            throw new BadCredentialsException(
+                "Student password login is enabled. Scan your QR to fill roll number, then enter your password."
+            );
+        }
+
+        auditLogger.record(
+            AuditAction.SCAN_LOGIN,
+            user.getId(),
+            "UserAccount",
+            user.getId(),
+            user.getFullName() + " · " + request.identifierType().name()
+        );
         return new LoginResponse(user.getId(), user.getFullName(), user.getRoles(), "scan-token-" + UUID.randomUUID());
     }
 

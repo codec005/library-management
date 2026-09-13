@@ -44,6 +44,8 @@ import {
   getCatalogCopyStats,
   getBranding,
   updateBranding,
+  getAppSettings,
+  updateAppSettings,
   removeBookCopyByQrCode,
   removeBookCopyBySsn,
   removeUser,
@@ -164,6 +166,9 @@ export default function App() {
   const [sessionRemainingSeconds, setSessionRemainingSeconds] = useState<number | null>(null);
   const [logoUrl, setLogoUrl] = useState("");
   const [collegeName, setCollegeName] = useState("");
+  const [studentPasswordRequired, setStudentPasswordRequired] = useState(false);
+  const [studentLoginRoll, setStudentLoginRoll] = useState("");
+  const [studentLoginPassword, setStudentLoginPassword] = useState("");
   const logoUrlRef = useRef("");
   const collegeNameRef = useRef("");
   const collegeNameSaveTimeoutRef = useRef<number | null>(null);
@@ -328,11 +333,12 @@ export default function App() {
   const canIssueToStudents = canManageBooks;
   const canViewStudentRecords = currentUser?.roles.some((role) => ["FACULTY", "LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
   const canManageCollegeBranding = currentUser?.roles.some((role) => ["ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
-  const canChangeOwnPassword = currentUser?.roles.some((role) => ["FACULTY", "LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false;
+  const canChangeOwnPassword = (currentUser?.roles.some((role) => ["FACULTY", "LIBRARIAN", "ADMIN", "SUPER_ADMIN"].includes(role)) ?? false)
+    || (isStudent && studentPasswordRequired);
   const canLookupUsersByQr = canViewStudentRecords;
   const canShowUserRegistration = canRegisterUsers;
   const canViewUserDirectory = canManageStudents || isFaculty;
-  const canShowManagement = canShowUserRegistration || canManageBooks || canViewUserDirectory;
+  const canShowManagement = canShowUserRegistration || canManageBooks || canViewUserDirectory || canManageCollegeBranding;
   const staffIssueStudentValue = staffBorrowerIdentifier.trim();
   const staffIssueBookValue = scanValue.trim();
   const isStaffIssueReady = canIssueToStudents && staffIssueStudentValue.length > 0 && staffIssueBookValue.length > 0;
@@ -368,6 +374,7 @@ export default function App() {
     void refreshBookCategories();
     void refreshCopyStats();
     void refreshBranding();
+    void refreshAppSettings();
 
     return () => {
       if (collegeNameSaveTimeoutRef.current !== null) {
@@ -549,6 +556,43 @@ export default function App() {
     } catch {
       // Keep current branding values if the request fails.
     }
+  }
+
+  async function refreshAppSettings() {
+    try {
+      const settings = await getAppSettings();
+      setStudentPasswordRequired(settings.studentPasswordRequired);
+    } catch {
+      // Keep current settings if the request fails.
+    }
+  }
+
+  async function handleStudentPasswordRequiredChange(nextValue: boolean) {
+    if (!currentUser || !canManageCollegeBranding) {
+      setMessage("Sign in as admin to update portal settings.");
+      return;
+    }
+
+    const previous = studentPasswordRequired;
+    setStudentPasswordRequired(nextValue);
+    try {
+      const settings = await updateAppSettings({ studentPasswordRequired: nextValue }, currentUser.userId);
+      setStudentPasswordRequired(settings.studentPasswordRequired);
+      setMessage(
+        settings.studentPasswordRequired
+          ? "Students must now sign in with roll number and password."
+          : "Students now sign in with QR scan only."
+      );
+    } catch (error) {
+      setStudentPasswordRequired(previous);
+      setMessage(error instanceof Error ? error.message : "Unable to save portal settings.");
+    }
+  }
+
+  function rollNumberFromStudentQr(value: string) {
+    const trimmed = value.trim();
+    const match = /^USER-QR-(.+)$/i.exec(trimmed);
+    return match?.[1]?.trim() || trimmed;
   }
 
   async function saveBranding(nextCollegeName: string, logoDataUrl?: string) {
@@ -794,6 +838,8 @@ export default function App() {
     setIdentifier("");
     setPassword("");
     setUserScanValue("");
+    setStudentLoginRoll("");
+    setStudentLoginPassword("");
   }
 
   function clearSessionOnlyState() {
@@ -959,8 +1005,41 @@ export default function App() {
     return user.roles.includes("FACULTY") && canManageLibrarians;
   }
 
+  async function handleStudentPasswordLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+
+    const rollNumber = studentLoginRoll.trim();
+    if (!rollNumber) {
+      setMessage("Enter or scan your roll number first.");
+      return;
+    }
+    if (!studentLoginPassword) {
+      setMessage("Enter your password.");
+      return;
+    }
+
+    try {
+      const user = await login("ROLL_NUMBER", rollNumber, studentLoginPassword);
+      clearSessionOnlyState();
+      clearLoginInputs();
+      setCurrentUser(user);
+      await loadCurrentUserViews(user);
+      setMessage(`Welcome, ${user.fullName}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Student login failed. Check roll number and password.");
+    }
+  }
+
   async function handleUserScanLogin(value = userScanValue) {
     setMessage("");
+
+    if (studentPasswordRequired) {
+      setStudentLoginRoll(rollNumberFromStudentQr(value));
+      setUserScanValue(value);
+      setMessage("Roll number filled from QR. Enter your password to sign in.");
+      return;
+    }
 
     try {
       const user = await scanLogin("QR_CREDENTIAL", value.trim());
@@ -2118,18 +2197,6 @@ export default function App() {
             <p className={collegeName ? "college-name" : "eyebrow"}>{collegeName || "College Portal"}</p>
             <h1>Central Library Management</h1>
             <p className="header-subtitle">Student registration, catalog search, circulation, and QR services.</p>
-            {canManageCollegeBranding && (
-              <div className="branding-controls">
-                <label className="logo-upload">
-                  Add college logo
-                  <input type="file" accept="image/*" onChange={handleLogoUpload} />
-                </label>
-                <label className="college-name-field">
-                  College name
-                  <input placeholder="Enter college name" value={collegeName} onChange={handleCollegeNameChange} />
-                </label>
-              </div>
-            )}
           </div>
         </div>
 
@@ -2271,23 +2338,63 @@ export default function App() {
 
         {!currentUser && (
           <div className="login-split">
-            <article className="login-card">
-              <div className="card-header">
-                <QrCode size={22} />
-                <div>
-                  <h2>Student Login</h2>
-                  <p>Students must scan their ID QR code to sign in.</p>
+            {studentPasswordRequired ? (
+              <form className="login-card" onSubmit={(event) => void handleStudentPasswordLogin(event)}>
+                <div className="card-header">
+                  <QrCode size={22} />
+                  <div>
+                    <h2>Student Login</h2>
+                    <p>Scan your ID QR to fill roll number, then enter your password.</p>
+                  </div>
                 </div>
-              </div>
 
-              <QrScanner
-                label="Scan Student QR To Login"
-                onDetected={(value) => {
-                  setUserScanValue(value);
-                  void handleUserScanLogin(value);
-                }}
-              />
-            </article>
+                <label>
+                  Roll Number
+                  <input
+                    placeholder="Scan QR or enter roll number"
+                    value={studentLoginRoll}
+                    onChange={(event) => setStudentLoginRoll(event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  Password
+                  <input
+                    type="password"
+                    placeholder="Enter password"
+                    value={studentLoginPassword}
+                    onChange={(event) => setStudentLoginPassword(event.target.value)}
+                  />
+                </label>
+
+                <button type="submit">Sign In Student</button>
+
+                <QrScanner
+                  label="Scan Student QR"
+                  onDetected={(value) => {
+                    void handleUserScanLogin(value);
+                  }}
+                />
+              </form>
+            ) : (
+              <article className="login-card">
+                <div className="card-header">
+                  <QrCode size={22} />
+                  <div>
+                    <h2>Student Login</h2>
+                    <p>Students must scan their ID QR code to sign in.</p>
+                  </div>
+                </div>
+
+                <QrScanner
+                  label="Scan Student QR To Login"
+                  onDetected={(value) => {
+                    setUserScanValue(value);
+                    void handleUserScanLogin(value);
+                  }}
+                />
+              </article>
+            )}
 
             <form className="login-card" onSubmit={handleLogin}>
               <div className="card-header">
@@ -2734,6 +2841,46 @@ export default function App() {
 
       {canShowManagement && (
       <section className="management-grid">
+        {canManageCollegeBranding && (
+          <article className="panel portal-settings-panel">
+            <div className="panel-title">
+              <Library size={22} />
+              <div>
+                <h2>Portal Settings</h2>
+                <p>Update college branding and how students sign in.</p>
+              </div>
+            </div>
+
+            <div className="portal-settings-grid">
+              <label className="portal-setting-field">
+                College name
+                <input placeholder="Enter college name" value={collegeName} onChange={handleCollegeNameChange} />
+              </label>
+
+              <label className="logo-upload portal-logo-upload">
+                {logoUrl ? "Change college logo" : "Add college logo"}
+                <input type="file" accept="image/*" onChange={handleLogoUpload} />
+              </label>
+
+              <label className="portal-setting-field">
+                Student password login
+                <select
+                  value={studentPasswordRequired ? "yes" : "no"}
+                  onChange={(event) => void handleStudentPasswordRequiredChange(event.target.value === "yes")}
+                >
+                  <option value="no">No — QR scan only</option>
+                  <option value="yes">Yes — roll number + password</option>
+                </select>
+                <span className="list-note">
+                  {studentPasswordRequired
+                    ? "Students scan QR to fill roll number, then type their password. Change Password is available for students."
+                    : "Students sign in with QR scan only. Change Password is hidden for student accounts."}
+                </span>
+              </label>
+            </div>
+          </article>
+        )}
+
         {canShowUserRegistration && (
         <article className="panel registration-panel">
           <div className="panel-title">
@@ -3809,7 +3956,9 @@ export default function App() {
                             View Details
                           </button>
                         )}
-                        {canManageLibrarians && !user.roles.includes("SUPER_ADMIN") && (
+                        {canManageLibrarians
+                          && !user.roles.includes("SUPER_ADMIN")
+                          && (!user.roles.includes("STUDENT") || studentPasswordRequired) && (
                           <button type="button" onClick={() => handleOpenAdminPasswordReset(user)}>
                             Change Password
                           </button>
