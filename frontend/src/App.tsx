@@ -222,6 +222,7 @@ export default function App() {
   const [generatedQr, setGeneratedQr] = useState<{ fullName: string; dataUrl: string; value: string } | null>(null);
   const [isUserDirectoryOpen, setIsUserDirectoryOpen] = useState(false);
   const [isIssuedBooksWindowOpen, setIsIssuedBooksWindowOpen] = useState(false);
+  const [isScannedUserDetailsWindowOpen, setIsScannedUserDetailsWindowOpen] = useState(false);
   const [isAllIssuedBooksWindowOpen, setIsAllIssuedBooksWindowOpen] = useState(false);
   const [allIssuedBooks, setAllIssuedBooks] = useState<CirculationResponse[]>([]);
   const [allIssuedPage, setAllIssuedPage] = useState(0);
@@ -420,6 +421,10 @@ export default function App() {
         setIsIssuedBooksWindowOpen(false);
         return true;
       }
+      if (isScannedUserDetailsWindowOpen) {
+        setIsScannedUserDetailsWindowOpen(false);
+        return true;
+      }
       if (selectedTitleGroup) {
         setSelectedTitleGroup(null);
         return true;
@@ -506,6 +511,7 @@ export default function App() {
     message,
     passwordResetUser,
     isIssuedBooksWindowOpen,
+    isScannedUserDetailsWindowOpen,
     selectedTitleGroup,
     isBookHistoryOpen,
     isScanResultOpen,
@@ -532,6 +538,7 @@ export default function App() {
     message,
     passwordResetUser,
     isIssuedBooksWindowOpen,
+    isScannedUserDetailsWindowOpen,
     selectedTitleGroup,
     isBookHistoryOpen,
     isScanResultOpen,
@@ -868,6 +875,7 @@ export default function App() {
     setUserQrLookupValue("");
     setUserLookupType("ROLL_NUMBER");
     setScannedUserDetails(null);
+    setIsScannedUserDetailsWindowOpen(false);
     setIsUserDirectoryOpen(false);
     setIsIssuedBooksWindowOpen(false);
     setIsAllIssuedBooksWindowOpen(false);
@@ -1699,9 +1707,11 @@ export default function App() {
       setScannedUserDetails(details);
       setUserLookupType(type);
       setUserQrLookupValue(lookupValue);
-      setMessage(`Loaded details for ${details.fullName}.`);
+      setIsScannedUserDetailsWindowOpen(true);
+      setMessage("");
     } catch (error) {
       setScannedUserDetails(null);
+      setIsScannedUserDetailsWindowOpen(false);
       setMessage(error instanceof Error ? error.message : "Unable to load user details.");
     }
   }
@@ -3253,6 +3263,7 @@ export default function App() {
                 onChange={(event) => {
                   setUserLookupType(event.target.value as "ROLL_NUMBER" | "QR_CREDENTIAL");
                   setScannedUserDetails(null);
+                  setIsScannedUserDetailsWindowOpen(false);
                 }}
               >
                 <option value="ROLL_NUMBER">Roll / Staff Code</option>
@@ -3277,56 +3288,6 @@ export default function App() {
                 void handleLookupUserDetails(value, "QR_CREDENTIAL");
               }}
             />
-
-            {scannedUserDetails && (
-              <div className="student-detail-card" style={{ marginTop: "1rem" }}>
-                <h3>{scannedUserDetails.fullName}</h3>
-                <dl className="details-list">
-                  <div>
-                    <dt>Department</dt>
-                    <dd>{scannedUserDetails.department}</dd>
-                  </div>
-                  <div>
-                    <dt>Role</dt>
-                    <dd>{scannedUserDetails.roles.join(", ")}</dd>
-                  </div>
-                  {scannedUserDetails.identifiers
-                    .filter((identifierItem) => identifierItem.type === "ROLL_NUMBER" || identifierItem.type === "COLLEGE_EMAIL")
-                    .map((identifierItem) => (
-                      <div key={`${identifierItem.type}-${identifierItem.value}`}>
-                        <dt>{formatIdentifierLabel(identifierItem.type, scannedUserDetails.roles)}</dt>
-                        <dd>{identifierItem.value}</dd>
-                      </div>
-                    ))}
-                </dl>
-                {canViewIssuedBooksFor(scannedUserDetails) && (
-                  <div className="action-row">
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => {
-                        setSelectedUserDetails(scannedUserDetails);
-                        void (async () => {
-                          if (!currentUser) {
-                            return;
-                          }
-                          try {
-                            setSelectedUserIssuedBooks(
-                              await listIssuedBooksForUser(scannedUserDetails.id, currentUser.userId)
-                            );
-                            setIsIssuedBooksWindowOpen(true);
-                          } catch (error) {
-                            setMessage(error instanceof Error ? error.message : "Unable to load issued books.");
-                          }
-                        })();
-                      }}
-                    >
-                      View Issued Books
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </article>
         )}
 
@@ -3382,6 +3343,84 @@ export default function App() {
           </article>
         )}
       </section>
+      )}
+
+      {isScannedUserDetailsWindowOpen && scannedUserDetails && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="User details"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsScannedUserDetailsWindowOpen(false);
+            }
+          }}
+        >
+          <div className="modal-panel user-details-window">
+            <div className="modal-header">
+              <div>
+                <h2>User Details</h2>
+                <p>Profile for the roll number or QR you looked up.</p>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setIsScannedUserDetailsWindowOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="student-detail-card user-details-window-card">
+              <h3>{scannedUserDetails.fullName}</h3>
+              <dl className="details-list">
+                <div>
+                  <dt>Department</dt>
+                  <dd>{scannedUserDetails.department}</dd>
+                </div>
+                <div>
+                  <dt>Role</dt>
+                  <dd>{scannedUserDetails.roles.join(", ")}</dd>
+                </div>
+                {scannedUserDetails.identifiers
+                  .filter((identifierItem) => identifierItem.type === "ROLL_NUMBER" || identifierItem.type === "COLLEGE_EMAIL")
+                  .map((identifierItem) => (
+                    <div key={`${identifierItem.type}-${identifierItem.value}`}>
+                      <dt>{formatIdentifierLabel(identifierItem.type, scannedUserDetails.roles)}</dt>
+                      <dd>{identifierItem.value}</dd>
+                    </div>
+                  ))}
+              </dl>
+              {canViewIssuedBooksFor(scannedUserDetails) && (
+                <div className="action-row">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setSelectedUserDetails(scannedUserDetails);
+                      void (async () => {
+                        if (!currentUser) {
+                          return;
+                        }
+                        try {
+                          setSelectedUserIssuedBooks(
+                            await listIssuedBooksForUser(scannedUserDetails.id, currentUser.userId)
+                          );
+                          setIsIssuedBooksWindowOpen(true);
+                        } catch (error) {
+                          setMessage(error instanceof Error ? error.message : "Unable to load issued books.");
+                        }
+                      })();
+                    }}
+                  >
+                    View Issued Books
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {isScanResultOpen && scanResult && (

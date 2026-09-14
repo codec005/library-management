@@ -1142,6 +1142,14 @@ button.book-row-button:focus-visible span {
   margin: 0;
 }
 
+.user-details-window {
+  max-width: 32rem;
+}
+
+.user-details-window-card {
+  margin-top: 0;
+}
+
 .view-issued-button {
   margin-top: 1rem;
   padding-inline: 1rem;
