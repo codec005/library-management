@@ -10,7 +10,7 @@ WorkingDirectory=/home/pi/library-management/backend
 Environment=DB_URL=jdbc:mariadb://localhost:3306/library_management
 Environment=DB_USERNAME=library_user
 Environment=DB_PASSWORD=library_password
-Environment=ALLOWED_ORIGINS=http://localhost:5173,http://PI_IP_ADDRESS:5173,https://localhost:5174,https://PI_IP_ADDRESS:5174
+Environment=ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://192.168.*.*:5173,http://10.*.*.*:5173,http://172.*.*.*:5173,https://localhost:5173,https://127.0.0.1:5173,https://192.168.*.*:5173,https://10.*.*.*:5173,https://172.*.*.*:5173,http://localhost:5174,http://127.0.0.1:5174,http://192.168.*.*:5174,http://10.*.*.*:5174,http://172.*.*.*:5174,https://localhost:5174,https://127.0.0.1:5174,https://192.168.*.*:5174,https://10.*.*.*:5174,https://172.*.*.*:5174,https://*.trycloudflare.com
 ExecStart=/usr/bin/mvn spring-boot:run -Dspring-boot.run.profiles=mariadb
 Restart=always
 RestartSec=10
