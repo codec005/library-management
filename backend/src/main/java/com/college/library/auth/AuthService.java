@@ -7,8 +7,8 @@ import com.college.library.identity.IdentifierType;
 import com.college.library.identity.UserAccount;
 import com.college.library.identity.UserCredentialRepository;
 import com.college.library.identity.UserRole;
+import com.college.library.security.JwtService;
 import com.college.library.settings.AppSettingsService;
-import java.util.UUID;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,19 +22,22 @@ public class AuthService implements AuthUseCase {
     private final PasswordEncoder passwordEncoder;
     private final AuditLogger auditLogger;
     private final AppSettingsService appSettingsService;
+    private final JwtService jwtService;
 
     public AuthService(
         IdentityResolver identityResolver,
         UserCredentialRepository userCredentialRepository,
         PasswordEncoder passwordEncoder,
         AuditLogger auditLogger,
-        AppSettingsService appSettingsService
+        AppSettingsService appSettingsService,
+        JwtService jwtService
     ) {
         this.identityResolver = identityResolver;
         this.userCredentialRepository = userCredentialRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditLogger = auditLogger;
         this.appSettingsService = appSettingsService;
+        this.jwtService = jwtService;
     }
 
     @Override
@@ -68,7 +71,7 @@ public class AuthService implements AuthUseCase {
             user.getId(),
             user.getFullName() + " · " + request.identifierType().name()
         );
-        return new LoginResponse(user.getId(), user.getFullName(), user.getRoles(), "dev-token-" + UUID.randomUUID());
+        return toLoginResponse(user);
     }
 
     @Override
@@ -104,7 +107,16 @@ public class AuthService implements AuthUseCase {
             user.getId(),
             user.getFullName() + " · " + request.identifierType().name()
         );
-        return new LoginResponse(user.getId(), user.getFullName(), user.getRoles(), "scan-token-" + UUID.randomUUID());
+        return toLoginResponse(user);
+    }
+
+    private LoginResponse toLoginResponse(UserAccount user) {
+        String accessToken = jwtService.createToken(
+            user.getId(),
+            user.getFullName(),
+            user.getRoles().stream().map(Enum::name).toList()
+        );
+        return new LoginResponse(user.getId(), user.getFullName(), user.getRoles(), accessToken);
     }
 
     private String cleanValue(String value) {

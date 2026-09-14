@@ -38,6 +38,7 @@ import {
   renewTransaction,
   renewBookByIdentifier,
   clearOutstandingFine,
+  clearAccessToken,
   registerUser,
   getBookCopyByQrCode,
   getBookCopyBySsn,
@@ -591,8 +592,19 @@ export default function App() {
 
   function rollNumberFromStudentQr(value: string) {
     const trimmed = value.trim();
-    const match = /^USER-QR-(.+)$/i.exec(trimmed);
-    return match?.[1]?.trim() || trimmed;
+    // USER-QR-{roll}-{randomId} (randomId is 32 hex chars)
+    const withRandom = /^USER-QR-(.+)-([A-Fa-f0-9]{32})$/i.exec(trimmed);
+    if (withRandom?.[1]) {
+      return withRandom[1].trim();
+    }
+    // Legacy: USER-QR-{roll}
+    const legacy = /^USER-QR-(.+)$/i.exec(trimmed);
+    if (legacy?.[1]) {
+      return legacy[1].trim();
+    }
+    // Previous interim format: QR:{roll}:{secret}
+    const colonFormat = /^QR:([^:]+):[A-Fa-f0-9]+$/i.exec(trimmed);
+    return colonFormat?.[1]?.trim() || trimmed;
   }
 
   async function saveBranding(nextCollegeName: string, logoDataUrl?: string) {
@@ -766,6 +778,7 @@ export default function App() {
 
     function expireSession() {
       window.clearInterval(intervalId);
+      clearAccessToken();
       setCurrentUser(null);
       setSessionRemainingSeconds(null);
       setMyProfile(null);
@@ -1049,7 +1062,7 @@ export default function App() {
       await loadCurrentUserViews(user);
       setMessage(`QR login approved for ${user.fullName}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "QR login failed. Try USER-QR-CS2026001.");
+      setMessage(error instanceof Error ? error.message : "QR login failed. Scan a valid student QR code.");
     }
   }
 
@@ -2167,6 +2180,7 @@ export default function App() {
   }
 
   function handleLogout() {
+    clearAccessToken();
     setCurrentUser(null);
     setSessionRemainingSeconds(null);
     setMyProfile(null);

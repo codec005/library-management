@@ -171,6 +171,16 @@ export interface AuditEventResponse {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 
+let accessToken: string | null = null;
+
+export function setAccessToken(token: string | null) {
+  accessToken = token;
+}
+
+export function clearAccessToken() {
+  accessToken = null;
+}
+
 export class ApiError extends Error {
   constructor(message: string, readonly status?: number) {
     super(message);
@@ -185,11 +195,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       ...options,
       headers: {
         "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...options?.headers
       }
     });
   } catch {
     throw new ApiError("Backend is not reachable. Start the Spring Boot server on port 8080.");
+  }
+
+  if (response.status === 401) {
+    clearAccessToken();
   }
 
   if (!response.ok) {
@@ -212,18 +227,22 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function login(identifierType: IdentifierType, identifier: string, password: string) {
-  return request<LoginResponse>("/api/auth/login", { // /api/auth/login tells which backend class and its function is to be called
+export async function login(identifierType: IdentifierType, identifier: string, password: string) {
+  const result = await request<LoginResponse>("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ identifierType, identifier, password }) // body tells the details of what usernme password has the user entered in website
+    body: JSON.stringify({ identifierType, identifier, password })
   });
+  setAccessToken(result.accessToken);
+  return result;
 }
 
-export function scanLogin(identifierType: "QR_CREDENTIAL" | "RFID_CARD", identifier: string) {
-  return request<LoginResponse>("/api/auth/rfid-login", {
+export async function scanLogin(identifierType: "QR_CREDENTIAL" | "RFID_CARD", identifier: string) {
+  const result = await request<LoginResponse>("/api/auth/rfid-login", {
     method: "POST",
     body: JSON.stringify({ identifierType, identifier })
   });
+  setAccessToken(result.accessToken);
+  return result;
 }
 
 export interface PageResponse<T> {

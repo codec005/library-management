@@ -123,7 +123,6 @@ public class UserManagementService implements UserManagementUseCase {
         String password = request.password() == null ? "" : request.password().trim();
 
         updateIdentifier(targetUser, IdentifierType.ROLL_NUMBER, rollNumber, true);
-        updateIdentifier(targetUser, IdentifierType.QR_CREDENTIAL, "USER-QR-" + rollNumber, true);
 
         if (collegeEmail.isBlank()) {
             removeIdentifier(targetUser, IdentifierType.COLLEGE_EMAIL);
@@ -226,16 +225,14 @@ public class UserManagementService implements UserManagementUseCase {
             .filter(UserAccount::isActive)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        String qrCredential = userIdentifierRepository.findByUserAndType(user, IdentifierType.QR_CREDENTIAL)
-            .orElseGet(() -> createQrCredential(user))
-            .getValue();
+        String qrCredential = rotateOrCreateQrCredential(user).getValue();
 
         auditLogger.record(
             AuditAction.USER_QR_GENERATE,
             actor.getId(),
             "UserAccount",
             user.getId(),
-            userLabel(user) + " · QR credential requested"
+            userLabel(user) + " · QR credential rotated"
         );
         return new UserQrCredentialResponse(user.getId(), user.getFullName(), qrCredential);
     }
@@ -431,7 +428,7 @@ public class UserManagementService implements UserManagementUseCase {
 
         UserAccount user = new UserAccount(request.fullName(), request.department(), Set.of(request.role()));
         user.addIdentifier(new UserIdentifier(IdentifierType.ROLL_NUMBER, request.rollNumber(), true));
-        user.addIdentifier(new UserIdentifier(IdentifierType.QR_CREDENTIAL, "USER-QR-" + request.rollNumber(), true));
+        user.addIdentifier(new UserIdentifier(IdentifierType.QR_CREDENTIAL, allocateUniqueQrValue(request.rollNumber()), true));
 
         if (request.collegeEmail() != null && !request.collegeEmail().isBlank()) {
             ensureIdentifierAvailable(IdentifierType.COLLEGE_EMAIL, request.collegeEmail());
@@ -505,17 +502,36 @@ public class UserManagementService implements UserManagementUseCase {
         return value == null ? "" : value.trim();
     }
 
-    private UserIdentifier createQrCredential(UserAccount user) {
-        String baseValue = userIdentifierRepository.findByUserAndType(user, IdentifierType.ROLL_NUMBER)
+    private UserIdentifier rotateOrCreateQrCredential(UserAccount user) {
+        String rollNumber = userIdentifierRepository.findByUserAndType(user, IdentifierType.ROLL_NUMBER)
             .map(UserIdentifier::getValue)
             .orElse(user.getId().toString());
-        String qrValue = "USER-QR-" + baseValue;
+        String qrValue = allocateUniqueQrValue(rollNumber);
+        return userIdentifierRepository.findByUserAndType(user, IdentifierType.QR_CREDENTIAL)
+            .map(existing -> {
+                existing.updateValue(qrValue);
+                return userIdentifierRepository.save(existing);
+            })
+            .orElseGet(() -> {
+                UserIdentifier qrIdentifier = new UserIdentifier(IdentifierType.QR_CREDENTIAL, qrValue, true);
+                user.addIdentifier(qrIdentifier);
+                return userIdentifierRepository.save(qrIdentifier);
+            });
+    }
 
-        ensureIdentifierAvailable(IdentifierType.QR_CREDENTIAL, qrValue);
-
-        UserIdentifier qrIdentifier = new UserIdentifier(IdentifierType.QR_CREDENTIAL, qrValue, true);
-        user.addIdentifier(qrIdentifier);
-        return userIdentifierRepository.save(qrIdentifier);
+    private String allocateUniqueQrValue(String rollNumber) {
+        String roll = cleanValue(rollNumber);
+        if (roll.isBlank()) {
+            roll = "USER";
+        }
+        for (int attempt = 0; attempt < 8; attempt++) {
+            String randomId = UUID.randomUUID().toString().replace("-", "");
+            String qrValue = "USER-QR-" + roll + "-" + randomId;
+            if (userIdentifierRepository.findByTypeAndValue(IdentifierType.QR_CREDENTIAL, qrValue).isEmpty()) {
+                return qrValue;
+            }
+        }
+        throw new IllegalStateException("Unable to allocate a unique QR credential");
     }
 
     private UserAccount findActor(UUID actorUserId) {

@@ -40,7 +40,11 @@ public class DataInitializer {
 
         UserAccount admin = new UserAccount("Admin User", "Administration", Set.of(UserRole.ADMIN));
         admin.addIdentifier(new UserIdentifier(IdentifierType.ROLL_NUMBER, "ADMIN001", true));
-        admin.addIdentifier(new UserIdentifier(IdentifierType.QR_CREDENTIAL, "USER-QR-ADMIN001", true));
+        admin.addIdentifier(new UserIdentifier(
+            IdentifierType.QR_CREDENTIAL,
+            "USER-QR-ADMIN001-" + java.util.UUID.randomUUID().toString().replace("-", ""),
+            true
+        ));
         userAccountRepository.save(admin);
         userCredentialRepository.save(new UserCredential(admin, passwordEncoder.encode("admin123")));
     }
