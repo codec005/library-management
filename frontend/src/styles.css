@@ -846,10 +846,9 @@ button.book-row-button:focus-visible span {
 }
 
 .user-list .compact-actions {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  min-height: calc((2.6rem * 2) + 0.5rem);
   width: 100%;
 }
 
@@ -857,10 +856,11 @@ button.book-row-button:focus-visible span {
   background: #dbeafe;
   box-shadow: none;
   color: #1e40af;
-  min-height: 2.6rem;
+  flex: 1 1 calc(50% - 0.25rem);
+  min-height: 2.55rem;
+  min-width: 8.5rem;
   padding: 0.5rem 0.65rem;
   white-space: nowrap;
-  width: 100%;
 }
 
 .user-list .compact-actions button:hover {
@@ -878,6 +878,19 @@ button.book-row-button:focus-visible span {
 .user-list .compact-actions button.danger-button:hover {
   background: #fecaca;
   color: #7f1d1d;
+}
+
+.user-list .inline-form button {
+  background: #dbeafe;
+  box-shadow: none;
+  color: #1e40af;
+}
+
+.user-list .inline-form button:hover {
+  background: #bfdbfe;
+  box-shadow: none;
+  color: #1e3a8a;
+  transform: none;
 }
 
 .add-copies-window {
