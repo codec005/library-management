@@ -98,9 +98,6 @@ create_https_certificate() {
 write_backend_service() {
   local mvn_bin
   mvn_bin="$(command -v mvn)"
-  # Keep LAN wildcards so CORS works when the Pi IP changes or other PCs open https://PI_IP:5174.
-  # Do not pin ALLOWED_ORIGINS to a single IP — that caused 403 Forbidden for LAN logins.
-  local allowed_origins="http://localhost:5173,http://127.0.0.1:5173,http://192.168.*.*:5173,http://10.*.*.*:5173,http://172.*.*.*:5173,https://localhost:5173,https://127.0.0.1:5173,https://192.168.*.*:5173,https://10.*.*.*:5173,https://172.*.*.*:5173,http://localhost:5174,http://127.0.0.1:5174,http://192.168.*.*:5174,http://10.*.*.*:5174,http://172.*.*.*:5174,https://localhost:5174,https://127.0.0.1:5174,https://192.168.*.*:5174,https://10.*.*.*:5174,https://172.*.*.*:5174,https://*.trycloudflare.com"
 
   sudo tee "$BACKEND_SERVICE" >/dev/null <<SERVICE
 [Unit]
@@ -115,7 +112,7 @@ WorkingDirectory=$PROJECT_DIR/backend
 Environment=DB_URL=jdbc:mariadb://localhost:3306/$DB_NAME
 Environment=DB_USERNAME=$DB_USERNAME
 Environment=DB_PASSWORD=$DB_PASSWORD
-Environment=ALLOWED_ORIGINS=$allowed_origins
+Environment=ALLOWED_ORIGINS=*
 ExecStart=$mvn_bin spring-boot:run -Dspring-boot.run.profiles=mariadb
 Restart=always
 RestartSec=10
