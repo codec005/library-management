@@ -11,6 +11,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Index;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -32,6 +33,11 @@ public class UserAccount extends BaseEntity {
 
     @Column(nullable = false)
     private boolean active = true;
+
+    @Column(nullable = false)
+    private int failedLoginAttempts = 0;
+
+    private Instant lockedUntil;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @Enumerated(EnumType.STRING)
@@ -59,6 +65,14 @@ public class UserAccount extends BaseEntity {
 
     public boolean isActive() {
         return active;
+    }
+
+    public int getFailedLoginAttempts() {
+        return failedLoginAttempts;
+    }
+
+    public Instant getLockedUntil() {
+        return lockedUntil;
     }
 
     public Set<UserRole> getRoles() {
@@ -90,5 +104,21 @@ public class UserAccount extends BaseEntity {
     public void addIdentifier(UserIdentifier identifier) {
         identifiers.add(identifier);
         identifier.assignTo(this);
+    }
+
+    public boolean isLoginLocked(Instant now) {
+        return lockedUntil != null && lockedUntil.isAfter(now);
+    }
+
+    public void recordFailedLogin(int maxFailedAttempts, Instant lockUntil) {
+        failedLoginAttempts += 1;
+        if (failedLoginAttempts >= maxFailedAttempts) {
+            lockedUntil = lockUntil;
+        }
+    }
+
+    public void clearLoginFailures() {
+        failedLoginAttempts = 0;
+        lockedUntil = null;
     }
 }

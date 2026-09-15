@@ -9,6 +9,8 @@ import com.college.library.identity.UserCredentialRepository;
 import com.college.library.identity.UserRole;
 import com.college.library.security.JwtService;
 import com.college.library.settings.AppSettingsService;
+import java.time.Duration;
+import java.time.Instant;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService implements AuthUseCase {
+
+    private static final int MAX_FAILED_LOGIN_ATTEMPTS = 3;
+    private static final Duration LOGIN_LOCKOUT_DURATION = Duration.ofMinutes(15);
 
     private final IdentityResolver identityResolver;
     private final UserCredentialRepository userCredentialRepository;
@@ -41,7 +46,7 @@ public class AuthService implements AuthUseCase {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BadCredentialsException.class)
     public LoginResponse login(LoginRequest request) {
         UserAccount user = identityResolver.resolve(request.identifierType(), cleanValue(request.identifier()))
             .orElseThrow(() -> new BadCredentialsException("Invalid login details"))
@@ -51,9 +56,28 @@ public class AuthService implements AuthUseCase {
             throw new BadCredentialsException("Account is inactive");
         }
 
+        Instant now = Instant.now();
+        ensureLoginNotLocked(user, now);
+
         boolean isStudent = user.getRoles().contains(UserRole.STUDENT);
-        if (isStudent && !appSettingsService.isStudentPasswordRequired()) {
-            throw new BadCredentialsException("Students can login only through QR scan");
+        boolean isStaff = user.getRoles().stream().anyMatch(role ->
+            role == UserRole.FACULTY
+                || role == UserRole.LIBRARIAN
+                || role == UserRole.ADMIN
+                || role == UserRole.SUPER_ADMIN
+        );
+
+        if (request.staffPortal()) {
+            if (!isStaff) {
+                throw new BadCredentialsException("Students must use the Student Login window");
+            }
+        } else {
+            if (!isStudent) {
+                throw new BadCredentialsException("Staff must use the Staff Login window");
+            }
+            if (!appSettingsService.isStudentPasswordRequired()) {
+                throw new BadCredentialsException("Students can login only through QR scan");
+            }
         }
 
         boolean matches = userCredentialRepository.findByUser(user)
@@ -61,8 +85,20 @@ public class AuthService implements AuthUseCase {
             .orElse(false);
 
         if (!matches) {
-            throw new BadCredentialsException("Invalid login details");
+            user.recordFailedLogin(MAX_FAILED_LOGIN_ATTEMPTS, now.plus(LOGIN_LOCKOUT_DURATION));
+            if (user.isLoginLocked(now)) {
+                throw new BadCredentialsException(
+                    "Too many failed attempts (" + user.getFailedLoginAttempts() + " of "
+                        + MAX_FAILED_LOGIN_ATTEMPTS + "). Try again in 15 minutes."
+                );
+            }
+            throw new BadCredentialsException(
+                "Invalid password. Failed attempts: " + user.getFailedLoginAttempts()
+                    + " of " + MAX_FAILED_LOGIN_ATTEMPTS + "."
+            );
         }
+
+        user.clearLoginFailures();
 
         auditLogger.record(
             AuditAction.PASSWORD_LOGIN,
@@ -108,6 +144,15 @@ public class AuthService implements AuthUseCase {
             user.getFullName() + " · " + request.identifierType().name()
         );
         return toLoginResponse(user);
+    }
+
+    private void ensureLoginNotLocked(UserAccount user, Instant now) {
+        if (user.isLoginLocked(now)) {
+            throw new BadCredentialsException("Too many failed attempts. Try again in 15 minutes.");
+        }
+        if (user.getLockedUntil() != null) {
+            user.clearLoginFailures();
+        }
     }
 
     private LoginResponse toLoginResponse(UserAccount user) {

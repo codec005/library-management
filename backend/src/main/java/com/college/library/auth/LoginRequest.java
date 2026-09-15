@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 public record LoginRequest(
     @NotNull IdentifierType identifierType,
     @NotBlank String identifier,
-    @NotBlank String password
+    @NotBlank String password,
+    boolean staffPortal
 ) {
 }

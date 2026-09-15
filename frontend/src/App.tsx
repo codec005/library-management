@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Library, Plus, QrCode, Search, Trash2, Users } from "lucide-react";
+import { BookOpen, CheckCircle2, Library, Plus, QrCode, Search, Trash2, Users, XCircle } from "lucide-react";
 import QRCode from "qrcode";
 import QrScanner from "./QrScanner";
 import {
@@ -63,6 +63,8 @@ import {
 
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 const COPYRIGHT_YEAR = new Date().getFullYear();
+
+type MessageTone = "success" | "error" | "info";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
@@ -310,12 +312,18 @@ export default function App() {
   });
   const [bookEditQrValue, setBookEditQrValue] = useState("");
   const [issueLoanDays, setIssueLoanDays] = useState(14);
-  const [message, setMessage] = useState("");
+  const [message, setMessageText] = useState("");
+  const [messageTone, setMessageTone] = useState<MessageTone>("info");
   const [resetFineOnReturn, setResetFineOnReturn] = useState<Record<string, boolean>>({});
   const [renewDaysByTransaction, setRenewDaysByTransaction] = useState<Record<string, number>>({});
   const [bookHistoryScanType, setBookHistoryScanType] = useState<ScanType>("SSN");
   const [bookHistoryScanValue, setBookHistoryScanValue] = useState("");
   const [bookCopyHistory, setBookCopyHistory] = useState<BookCopyHistoryResponse | null>(null);
+
+  function setMessage(text: string, tone: MessageTone = "info") {
+    setMessageTone(text ? tone : "info");
+    setMessageText(text);
+  }
 
   const activeRole = useMemo(() => currentUser?.roles[0] ?? "Guest", [currentUser]);
   const loginIdentifierLabel = useMemo(() => {
@@ -920,7 +928,7 @@ export default function App() {
     setMessage("");
 
     try {
-      const user = await login(identifierType, identifier.trim(), password);
+      const user = await login(identifierType, identifier.trim(), password, true);
       clearSessionOnlyState();
       clearLoginInputs();
       setCurrentUser(user);
@@ -1057,7 +1065,7 @@ export default function App() {
     }
 
     try {
-      const user = await login("ROLL_NUMBER", rollNumber, studentLoginPassword);
+      const user = await login("ROLL_NUMBER", rollNumber, studentLoginPassword, false);
       clearSessionOnlyState();
       clearLoginInputs();
       setCurrentUser(user);
@@ -1150,19 +1158,19 @@ export default function App() {
 
   async function handleIssue() {
     if (!currentUser) {
-      setMessage("Sign in before issuing a book.");
+      setMessage("Sign in before issuing a book.", "error");
       return;
     }
 
     const selectedCopy = scanResult ?? await resolveBookCopy();
     if (!selectedCopy) {
-      setMessage("Enter or scan a valid book QR/RFID/SSN value before issuing.");
+      setMessage("Enter or scan a valid book QR/RFID/SSN value before issuing.", "error");
       return;
     }
 
     const maxDays = selectedCopy.loanPeriodDays;
     if (issueLoanDays < 1 || issueLoanDays > maxDays) {
-      setMessage(`Borrow days must be between 1 and ${maxDays}.`);
+      setMessage(`Borrow days must be between 1 and ${maxDays}.`, "error");
       return;
     }
 
@@ -1175,16 +1183,16 @@ export default function App() {
       );
       await loadCurrentUserViews(currentUser);
       await refreshCatalogIfOpen();
-      setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName} for ${issueLoanDays} day(s).`);
+      setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName} for ${issueLoanDays} day(s).`, "success");
       setScanResult({ ...selectedCopy, status: "ISSUED" });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Issue failed. The copy may already be issued or unavailable.");
+      setMessage(error instanceof Error ? error.message : "Issue failed. The copy may already be issued or unavailable.", "error");
     }
   }
 
   async function handleStaffIssue() {
     if (!currentUser) {
-      setMessage("Sign in as librarian or admin to issue a book to a student or faculty member.");
+      setMessage("Sign in as librarian or admin to issue a book to a student or faculty member.", "error");
       return;
     }
 
@@ -1192,18 +1200,18 @@ export default function App() {
     const bookScanValue = scanValue.trim();
 
     if (!borrowerIdentifier) {
-      setMessage("Enter the roll number/staff code or scan the borrower QR first.");
+      setMessage("Enter the roll number/staff code or scan the borrower QR first.", "error");
       return;
     }
 
     if (!bookScanValue) {
-      setMessage("Enter or scan the book copy QR/RFID/SSN value before issuing.");
+      setMessage("Enter or scan the book copy QR/RFID/SSN value before issuing.", "error");
       return;
     }
 
     const maxDays = scanResult?.loanPeriodDays ?? issueLoanDays;
     if (issueLoanDays < 1 || issueLoanDays > maxDays) {
-      setMessage(`Borrow days must be between 1 and ${maxDays}.`);
+      setMessage(`Borrow days must be between 1 and ${maxDays}.`, "error");
       return;
     }
 
@@ -1218,13 +1226,13 @@ export default function App() {
       );
       setStaffBorrowerIdentifier(borrowerIdentifier);
       setScanValue(bookScanValue);
-      setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName} for ${issueLoanDays} day(s). Return by ${transaction.dueOn}.`);
+      setMessage(`${transaction.bookTitle} issued to ${transaction.borrowerName} for ${issueLoanDays} day(s). Return by ${transaction.dueOn}.`, "success");
       await refreshCatalogIfOpen();
       if (selectedUserDetails) {
         setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Issue to borrower failed.");
+      setMessage(error instanceof Error ? error.message : "Issue to borrower failed.", "error");
     }
   }
 
@@ -1333,7 +1341,7 @@ export default function App() {
 
   async function handleReturnIssuedBook(book: CirculationResponse) {
     if (!currentUser || !selectedUserDetails) {
-      setMessage("Select a student before returning a book.");
+      setMessage("Select a student before returning a book.", "error");
       return;
     }
 
@@ -1349,20 +1357,20 @@ export default function App() {
       setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
       await refreshCatalogIfOpen();
       const fineMessage = transaction.fineAmount === 0 ? "No fine." : `Fine due: Rs ${transaction.fineAmount}.`;
-      setMessage(`${transaction.bookTitle} returned. ${fineMessage}`);
+      setMessage(`${transaction.bookTitle} returned. ${fineMessage}`, "success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Return failed.");
+      setMessage(error instanceof Error ? error.message : "Return failed.", "error");
     }
   }
 
   async function handleStaffReturnByScan() {
     if (!currentUser) {
-      setMessage("Sign in as librarian or admin to return books.");
+      setMessage("Sign in as librarian or admin to return books.", "error");
       return;
     }
 
     if (!isStaffReturnReady) {
-      setMessage("Enter/scan the borrower roll/QR and the book QR/SSN before returning.");
+      setMessage("Enter/scan the borrower roll/QR and the book QR/SSN before returning.", "error");
       return;
     }
 
@@ -1385,25 +1393,25 @@ export default function App() {
         setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
       }
       const fineMessage = transaction.fineAmount === 0 ? "No fine." : `Fine due: Rs ${transaction.fineAmount}.`;
-      setMessage(`${transaction.bookTitle} returned for ${transaction.borrowerName}. ${fineMessage}`);
+      setMessage(`${transaction.bookTitle} returned for ${transaction.borrowerName}. ${fineMessage}`, "success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Return failed.");
+      setMessage(error instanceof Error ? error.message : "Return failed.", "error");
     }
   }
 
   async function handleStaffRenewByScan() {
     if (!currentUser) {
-      setMessage("Sign in as librarian or admin to renew books.");
+      setMessage("Sign in as librarian or admin to renew books.", "error");
       return;
     }
 
     if (!isStaffRenewReady) {
-      setMessage("Enter/scan the borrower roll/QR and the book QR/SSN before renewing.");
+      setMessage("Enter/scan the borrower roll/QR and the book QR/SSN before renewing.", "error");
       return;
     }
 
     if (renewLoanDays < 1) {
-      setMessage("Renewal days must be at least 1.");
+      setMessage("Renewal days must be at least 1.", "error");
       return;
     }
 
@@ -1427,32 +1435,33 @@ export default function App() {
         setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
       }
       setMessage(
-        `${transaction.bookTitle} renewed for ${transaction.borrowerName} by ${daysToRenew} day(s) until ${transaction.dueOn}.`
+        `${transaction.bookTitle} renewed for ${transaction.borrowerName} by ${daysToRenew} day(s) until ${transaction.dueOn}.`,
+        "success"
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Renewal failed.");
+      setMessage(error instanceof Error ? error.message : "Renewal failed.", "error");
     }
   }
 
   async function handleRenewIssuedBook(book: CirculationResponse) {
     if (!currentUser || !selectedUserDetails) {
-      setMessage("Select a student before renewing a book.");
+      setMessage("Select a student before renewing a book.", "error");
       return;
     }
 
     const renewalDays = renewDaysByTransaction[book.transactionId]
       ?? Math.min(7, book.loanPeriodDays);
     if (renewalDays < 1 || renewalDays > book.loanPeriodDays) {
-      setMessage(`Renewal days must be between 1 and ${book.loanPeriodDays}.`);
+      setMessage(`Renewal days must be between 1 and ${book.loanPeriodDays}.`, "error");
       return;
     }
 
     try {
       const transaction = await renewTransaction(book.transactionId, currentUser.userId, renewalDays);
       setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
-      setMessage(`${transaction.bookTitle} renewed by ${renewalDays} day(s) until ${transaction.dueOn}.`);
+      setMessage(`${transaction.bookTitle} renewed by ${renewalDays} day(s) until ${transaction.dueOn}.`, "success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Renewal failed.");
+      setMessage(error instanceof Error ? error.message : "Renewal failed.", "error");
     }
   }
 
@@ -2295,14 +2304,12 @@ export default function App() {
 
       <header className="portal-header">
         <div className="brand-block">
-          <div className="college-identity">
-            <div className={logoUrl ? "college-mark uploaded-logo" : "college-mark"}>
-              {logoUrl ? <img src={logoUrl} alt="College logo" /> : "CL"}
-            </div>
+          <div className={logoUrl ? "college-mark uploaded-logo" : "college-mark"}>
+            {logoUrl ? <img src={logoUrl} alt="College logo" /> : "CL"}
           </div>
           <div className="brand-copy">
             <p className={collegeName ? "college-name" : "eyebrow"}>{collegeName || "College Portal"}</p>
-            <h1>Central Library Management</h1>
+            <h1>Central Library</h1>
             <p className="header-subtitle">Student registration, catalog search, circulation, and QR services.</p>
           </div>
         </div>
@@ -2334,17 +2341,29 @@ export default function App() {
             }
           }}
         >
-          <div className="modal-panel message-dialog">
+          <div className={`modal-panel message-dialog message-dialog-${messageTone}`}>
             <div className="modal-header">
               <div>
-                <h2>Message</h2>
-                <p>Library portal update</p>
+                <h2>
+                  {messageTone === "success" ? "Success" : messageTone === "error" ? "Error" : "Message"}
+                </h2>
+                <p>
+                  {messageTone === "success"
+                    ? "Operation completed successfully"
+                    : messageTone === "error"
+                      ? "Something went wrong"
+                      : "Library portal update"}
+                </p>
               </div>
               <button type="button" className="secondary-button" onClick={() => setMessage("")}>
                 Close
               </button>
             </div>
-            <p className="message-dialog-text">{message}</p>
+            <div className="message-dialog-body">
+              {messageTone === "success" && <CheckCircle2 className="message-status-icon success" size={52} aria-hidden="true" />}
+              {messageTone === "error" && <XCircle className="message-status-icon error" size={52} aria-hidden="true" />}
+              <p className="message-dialog-text">{message}</p>
+            </div>
             <div className="action-row">
               <button type="button" onClick={() => setMessage("")}>
                 OK

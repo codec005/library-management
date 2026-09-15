@@ -227,10 +227,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function login(identifierType: IdentifierType, identifier: string, password: string) {
+export async function login(
+  identifierType: IdentifierType,
+  identifier: string,
+  password: string,
+  staffPortal = false
+) {
   const result = await request<LoginResponse>("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ identifierType, identifier, password })
+    body: JSON.stringify({ identifierType, identifier, password, staffPortal })
   });
   setAccessToken(result.accessToken);
   return result;
