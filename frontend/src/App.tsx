@@ -212,6 +212,11 @@ export default function App() {
   const [renewScanValue, setRenewScanValue] = useState("");
   const [renewLoanDays, setRenewLoanDays] = useState(7);
   const [renewCheckedBorrower, setRenewCheckedBorrower] = useState<UserDetailsResponse | null>(null);
+  const [clearFinesLookupType, setClearFinesLookupType] = useState<"ROLL_NUMBER" | "QR_CREDENTIAL">("ROLL_NUMBER");
+  const [clearFinesLookupValue, setClearFinesLookupValue] = useState("");
+  const [clearFinesBorrower, setClearFinesBorrower] = useState<UserDetailsResponse | null>(null);
+  const [clearFinesBooks, setClearFinesBooks] = useState<CirculationResponse[]>([]);
+  const [isClearFinesWindowOpen, setIsClearFinesWindowOpen] = useState(false);
   const [scanResult, setScanResult] = useState<BookCopyScanResponse | null>(null);
   const [isScanResultOpen, setIsScanResultOpen] = useState(false);
   const [isBookHistoryOpen, setIsBookHistoryOpen] = useState(false);
@@ -421,6 +426,10 @@ export default function App() {
         setIsIssuedBooksWindowOpen(false);
         return true;
       }
+      if (isClearFinesWindowOpen) {
+        setIsClearFinesWindowOpen(false);
+        return true;
+      }
       if (isScannedUserDetailsWindowOpen) {
         setIsScannedUserDetailsWindowOpen(false);
         return true;
@@ -511,6 +520,7 @@ export default function App() {
     message,
     passwordResetUser,
     isIssuedBooksWindowOpen,
+    isClearFinesWindowOpen,
     isScannedUserDetailsWindowOpen,
     selectedTitleGroup,
     isBookHistoryOpen,
@@ -538,6 +548,7 @@ export default function App() {
     message,
     passwordResetUser,
     isIssuedBooksWindowOpen,
+    isClearFinesWindowOpen,
     isScannedUserDetailsWindowOpen,
     selectedTitleGroup,
     isBookHistoryOpen,
@@ -897,6 +908,11 @@ export default function App() {
     setRenewBorrowerIdentifierType("ROLL_NUMBER");
     setRenewScanValue("");
     setRenewLoanDays(7);
+    setClearFinesLookupType("ROLL_NUMBER");
+    setClearFinesLookupValue("");
+    setClearFinesBorrower(null);
+    setClearFinesBooks([]);
+    setIsClearFinesWindowOpen(false);
   }
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
@@ -1449,6 +1465,69 @@ export default function App() {
     try {
       const transaction = await clearOutstandingFine(book.transactionId, currentUser.userId);
       setSelectedUserIssuedBooks(await listIssuedBooksForUser(selectedUserDetails.id, currentUser.userId));
+      if (clearFinesBorrower && clearFinesBorrower.id === selectedUserDetails.id) {
+        setClearFinesBooks(await listIssuedBooksForUser(clearFinesBorrower.id, currentUser.userId));
+      }
+      setMessage(`Fine cleared for ${transaction.bookTitle}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not clear fine.");
+    }
+  }
+
+  async function handleLoadClearFinesBorrower(
+    value = clearFinesLookupValue,
+    type: "ROLL_NUMBER" | "QR_CREDENTIAL" = clearFinesLookupType
+  ) {
+    setMessage("");
+
+    if (!currentUser || !canIssueToStudents) {
+      setMessage("Sign in as librarian or admin to clear fines.");
+      return;
+    }
+
+    const lookupValue = value.trim();
+    if (!lookupValue) {
+      setMessage(type === "QR_CREDENTIAL"
+        ? "Scan or enter a borrower QR credential first."
+        : "Enter a roll number or staff code first.");
+      return;
+    }
+
+    try {
+      const borrower = await getStudentDetailsByIdentifier(type, lookupValue, currentUser.userId);
+      const books = await listIssuedBooksForUser(borrower.id, currentUser.userId);
+      setClearFinesLookupType(type);
+      setClearFinesLookupValue(lookupValue);
+      setClearFinesBorrower(borrower);
+      setClearFinesBooks(books);
+      setSelectedUserDetails(borrower);
+      setSelectedUserIssuedBooks(books);
+      setIsClearFinesWindowOpen(true);
+      setMessage("");
+    } catch (error) {
+      setClearFinesBorrower(null);
+      setClearFinesBooks([]);
+      setIsClearFinesWindowOpen(false);
+      setMessage(error instanceof Error ? error.message : "Unable to load borrower loans.");
+    }
+  }
+
+  async function handleClearFineFromWindow(book: CirculationResponse) {
+    if (!currentUser || !clearFinesBorrower) {
+      setMessage("Load a borrower before clearing a fine.");
+      return;
+    }
+
+    if (book.fineAmount <= 0) {
+      setMessage("This loan has no outstanding fine.");
+      return;
+    }
+
+    try {
+      const transaction = await clearOutstandingFine(book.transactionId, currentUser.userId);
+      const books = await listIssuedBooksForUser(clearFinesBorrower.id, currentUser.userId);
+      setClearFinesBooks(books);
+      setSelectedUserIssuedBooks(books);
       setMessage(`Fine cleared for ${transaction.bookTitle}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not clear fine.");
@@ -2845,6 +2924,57 @@ export default function App() {
                 <p className="issue-hint">Enter or scan both the borrower and the book identifiers to renew.</p>
               )}
             </div>
+          </article>
+        )}
+
+        {canIssueToStudents && (
+          <article className="panel issue-panel">
+            <div className="panel-title">
+              <QrCode size={22} />
+              <div>
+                <h2>Clear Fines</h2>
+                <p>Look up a borrower by roll number, staff code, or QR, then clear outstanding fines.</p>
+              </div>
+            </div>
+
+            <form
+              className="scan-form book-history-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleLoadClearFinesBorrower();
+              }}
+            >
+              <select
+                value={clearFinesLookupType}
+                onChange={(event) => {
+                  setClearFinesLookupType(event.target.value as "ROLL_NUMBER" | "QR_CREDENTIAL");
+                  setClearFinesBorrower(null);
+                  setClearFinesBooks([]);
+                  setIsClearFinesWindowOpen(false);
+                }}
+              >
+                <option value="ROLL_NUMBER">Roll / Staff Code</option>
+                <option value="QR_CREDENTIAL">Borrower QR</option>
+              </select>
+              <input
+                placeholder={
+                  clearFinesLookupType === "QR_CREDENTIAL"
+                    ? "Enter or scan borrower QR"
+                    : "Enter roll number or staff code"
+                }
+                value={clearFinesLookupValue}
+                onChange={(event) => setClearFinesLookupValue(event.target.value)}
+              />
+              <button type="submit">Load Loans</button>
+            </form>
+            <QrScanner
+              label="Scan Borrower QR"
+              onDetected={(value) => {
+                setClearFinesLookupType("QR_CREDENTIAL");
+                setClearFinesLookupValue(value);
+                void handleLoadClearFinesBorrower(value, "QR_CREDENTIAL");
+              }}
+            />
           </article>
         )}
 
@@ -4429,6 +4559,77 @@ export default function App() {
                             Clear fine
                           </button>
                         </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isClearFinesWindowOpen && clearFinesBorrower && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Clear fines"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsClearFinesWindowOpen(false);
+            }
+          }}
+        >
+          <div className="modal-panel issued-books-window clear-fines-window">
+            <div className="modal-header">
+              <div>
+                <h2>Clear Fines</h2>
+                <p>
+                  {clearFinesBorrower.fullName}
+                  {" · "}
+                  {clearFinesBorrower.identifiers.find((item) => item.type === "ROLL_NUMBER")?.value
+                    ?? "No roll/staff code"}
+                </p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setIsClearFinesWindowOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            <div className="issued-list">
+              <div className="total-fine">
+                Outstanding Fine: Rs{" "}
+                {clearFinesBooks.reduce((total, book) => total + book.fineAmount, 0)}
+              </div>
+              {clearFinesBooks.length === 0 ? (
+                <p>No active loans or outstanding fines for this borrower.</p>
+              ) : (
+                clearFinesBooks.map((book) => (
+                  <div className="compact-row" key={book.transactionId}>
+                    <div>
+                      <strong>{book.bookTitle}</strong>
+                      <span>
+                        {book.accessionNumber}
+                        {" · "}
+                        {book.status}
+                        {" · Issued "}
+                        {formatDateTime(book.issuedAt, book.issuedOn)}
+                        {" · Due "}
+                        {book.dueOn}
+                        {book.returnedOn || book.returnedAt
+                          ? ` · Returned ${formatDateTime(book.returnedAt, book.returnedOn)}`
+                          : " · Not returned"}
+                        {" · Fine Rs "}
+                        {book.fineAmount}
+                      </span>
+                    </div>
+                    <div className="issued-book-actions">
+                      <span className="availability">Fine Rs {book.fineAmount}</span>
+                      {book.status === "RETURNED" && book.fineAmount > 0 && (
+                        <button type="button" onClick={() => void handleClearFineFromWindow(book)}>
+                          Clear Fine
+                        </button>
                       )}
                     </div>
                   </div>
