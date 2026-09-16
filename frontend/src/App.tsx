@@ -66,6 +66,17 @@ const COPYRIGHT_YEAR = new Date().getFullYear();
 
 type MessageTone = "success" | "error" | "info";
 
+function statusToneClass(status: string) {
+  const normalized = status.trim().toUpperCase();
+  if (normalized === "AVAILABLE") {
+    return "status-available";
+  }
+  if (normalized === "ISSUED") {
+    return "status-issued";
+  }
+  return "";
+}
+
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
 
@@ -2679,7 +2690,7 @@ export default function App() {
                   <span>
                     Checked: <strong>{scanResult.title}</strong>
                     {" · "}
-                    {scanResult.status}
+                    <span className={statusToneClass(scanResult.status)}>{scanResult.status}</span>
                   </span>
                   <button type="button" className="secondary-button" onClick={() => setIsScanResultOpen(true)}>
                     View details
@@ -3595,7 +3606,7 @@ export default function App() {
               </button>
             </div>
             <div className="scan-result">
-              <span className="badge">{scanResult.status}</span>
+              <span className={`badge ${statusToneClass(scanResult.status)}`}>{scanResult.status}</span>
               <h3>{scanResult.title}</h3>
               <p>{scanResult.author}</p>
               <dl>
@@ -3650,7 +3661,7 @@ export default function App() {
             </div>
             <div className="book-history-result">
               <div className="scan-result">
-                <span className="badge">{bookCopyHistory.status}</span>
+                <span className={`badge ${statusToneClass(bookCopyHistory.status)}`}>{bookCopyHistory.status}</span>
                 <h3>{bookCopyHistory.title}</h3>
                 <p>{bookCopyHistory.author}</p>
                 <dl>
@@ -3950,7 +3961,7 @@ export default function App() {
                       )}
                       <div>
                         <dt>Status</dt>
-                        <dd>{copy.status}</dd>
+                        <dd className={statusToneClass(copy.status)}>{copy.status}</dd>
                       </div>
                       <div>
                         <dt>Fine / day</dt>

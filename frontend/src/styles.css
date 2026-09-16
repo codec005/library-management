@@ -838,6 +838,21 @@ button.book-row-button:focus-visible span {
   white-space: nowrap;
 }
 
+.badge.status-issued {
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  color: #991b1b !important;
+}
+
+.status-available {
+  color: #16a34a;
+  font-weight: 800;
+}
+
+.status-issued {
+  color: #dc2626;
+  font-weight: 800;
+}
+
 .book-actions,
 .action-row {
   align-items: center;
