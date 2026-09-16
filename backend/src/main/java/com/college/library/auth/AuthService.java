@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuthService implements AuthUseCase {
 
-    private static final int MAX_FAILED_LOGIN_ATTEMPTS = 3;
+    private static final int MAX_FAILED_LOGIN_ATTEMPTS = 5;
     private static final Duration LOGIN_LOCKOUT_DURATION = Duration.ofMinutes(15);
 
     private final IdentityResolver identityResolver;
