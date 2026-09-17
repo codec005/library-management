@@ -248,6 +248,7 @@ export default function MobileApp() {
   });
   const [generatedQr, setGeneratedQr] = useState<{ fullName: string; dataUrl: string; value: string } | null>(null);
   const [passwordResetUser, setPasswordResetUser] = useState<UserSummary | null>(null);
+  const [qrRenewUser, setQrRenewUser] = useState<UserSummary | null>(null);
   const [adminNewPassword, setAdminNewPassword] = useState("");
   const [adminConfirmPassword, setAdminConfirmPassword] = useState("");
 
@@ -519,6 +520,9 @@ export default function MobileApp() {
     setTitleCopies([]);
     setMoreScreen("hub");
     setSelectedUserDetails(null);
+    setPasswordResetUser(null);
+    setQrRenewUser(null);
+    setGeneratedQr(null);
     setMessage("Signed out.", "info");
   }
 
@@ -922,11 +926,21 @@ export default function MobileApp() {
     }
   }
 
-  async function handleRenewUserQr(user: UserSummary) {
+  function handleRequestRenewUserQr(user: UserSummary) {
     if (!currentUser || !canManageLibrarians) {
       setMessage("Sign in as admin to renew user QR codes.", "error");
       return;
     }
+    setQrRenewUser(user);
+  }
+
+  async function handleConfirmRenewUserQr() {
+    if (!currentUser || !qrRenewUser || !canManageLibrarians) {
+      setMessage("Sign in as admin to renew user QR codes.", "error");
+      return;
+    }
+    const user = qrRenewUser;
+    setQrRenewUser(null);
     try {
       const qrCredential = await renewUserQrCredential(user.id, currentUser.userId);
       const dataUrl = await QRCode.toDataURL(qrCredential.qrCredential, { margin: 2, width: 220 });
@@ -2026,9 +2040,9 @@ export default function MobileApp() {
                       {canManageLibrarians && (
                         <>
                           <button type="button" className="m-btn secondary" onClick={() => void handleGenerateUserQr(user)}>
-                            Generate QR
+                            View QR
                           </button>
-                          <button type="button" className="m-btn secondary" onClick={() => void handleRenewUserQr(user)}>
+                          <button type="button" className="m-btn secondary" onClick={() => handleRequestRenewUserQr(user)}>
                             Renew QR
                           </button>
                         </>
@@ -3209,6 +3223,35 @@ export default function MobileApp() {
             <button type="button" className="m-btn" onClick={() => setMessage("")}>
               OK
             </button>
+          </div>
+        </div>
+      )}
+
+      {qrRenewUser && (
+        <div
+          className="m-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirm renew QR"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setQrRenewUser(null);
+            }
+          }}
+        >
+          <div className="m-dialog">
+            <h3>Renew QR</h3>
+            <p>
+              Renewing the QR for {qrRenewUser.fullName} will invalidate the current code. Continue?
+            </p>
+            <div className="m-row">
+              <button type="button" className="m-btn secondary" onClick={() => setQrRenewUser(null)}>
+                Cancel
+              </button>
+              <button type="button" className="m-btn" onClick={() => void handleConfirmRenewUserQr()}>
+                Renew QR
+              </button>
+            </div>
           </div>
         </div>
       )}

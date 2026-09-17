@@ -279,6 +279,7 @@ export default function App() {
     role: "STUDENT"
   });
   const [passwordResetUser, setPasswordResetUser] = useState<UserSummary | null>(null);
+  const [qrRenewUser, setQrRenewUser] = useState<UserSummary | null>(null);
   const [adminNewPassword, setAdminNewPassword] = useState("");
   const [adminConfirmPassword, setAdminConfirmPassword] = useState("");
   const [ownOldPassword, setOwnOldPassword] = useState("");
@@ -899,6 +900,7 @@ export default function App() {
     setSelectedUserIssuedBooks([]);
     setGeneratedQr(null);
     setPasswordResetUser(null);
+    setQrRenewUser(null);
     setAdminNewPassword("");
     setAdminConfirmPassword("");
     setOwnOldPassword("");
@@ -1650,7 +1652,17 @@ export default function App() {
     );
   }
 
-  async function handleRenewUserQr(user: UserSummary) {
+  function handleRequestRenewUserQr(user: UserSummary) {
+    setQrRenewUser(user);
+  }
+
+  async function handleConfirmRenewUserQr() {
+    if (!qrRenewUser) {
+      return;
+    }
+
+    const user = qrRenewUser;
+    setQrRenewUser(null);
     await showUserQr(
       user,
       renewUserQrCredential,
@@ -4207,9 +4219,9 @@ export default function App() {
                         {canGenerateUserQr && (
                           <>
                             <button type="button" onClick={() => void handleGenerateUserQr(user)}>
-                              Generate QR
+                              View QR
                             </button>
-                            <button type="button" className="secondary-button" onClick={() => void handleRenewUserQr(user)}>
+                            <button type="button" className="secondary-button" onClick={() => handleRequestRenewUserQr(user)}>
                               Renew QR
                             </button>
                           </>
@@ -4507,6 +4519,42 @@ export default function App() {
               </label>
               <button type="submit">Save Password</button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {qrRenewUser && (
+        <div
+          className="modal-backdrop secondary-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirm renew QR"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setQrRenewUser(null);
+            }
+          }}
+        >
+          <div className="modal-panel">
+            <div className="modal-header">
+              <div>
+                <h2>Renew QR</h2>
+                <p>
+                  Renewing the QR for {qrRenewUser.fullName} will invalidate the current code. Continue?
+                </p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setQrRenewUser(null)}>
+                Close
+              </button>
+            </div>
+            <div className="action-row">
+              <button type="button" className="secondary-button" onClick={() => setQrRenewUser(null)}>
+                Cancel
+              </button>
+              <button type="button" onClick={() => void handleConfirmRenewUserQr()}>
+                Renew QR
+              </button>
+            </div>
           </div>
         </div>
       )}
