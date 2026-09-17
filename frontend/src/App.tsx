@@ -23,6 +23,7 @@ import {
   getStudentDetailsByIdentifier,
   getUserDetailsByIdentifier,
   getUserQrCredential,
+  renewUserQrCredential,
   getUserDetails,
   resetUserPassword,
   changeOwnPassword,
@@ -161,6 +162,7 @@ const AUDIT_ACTION_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "USER_REMOVE", label: "User deleted" },
   { value: "USER_UPDATE", label: "User updated" },
   { value: "USER_QR_GENERATE", label: "User QR generated" },
+  { value: "USER_QR_RENEW", label: "User QR renewed" },
   { value: "PASSWORD_CHANGE", label: "Password changed" },
   { value: "BOOK_ADD", label: "Book added" },
   { value: "BOOK_UPDATE", label: "Book updated" },
@@ -1140,7 +1142,7 @@ export default function App() {
     const type = override?.type ?? bookHistoryScanType;
     const value = (override?.value ?? bookHistoryScanValue).trim();
     if (!value) {
-      setMessage("Enter or scan a book QR/RFID/SSN value to view history.");
+      setMessage("Enter or scan a book QR/SSN value to view history.");
       return;
     }
 
@@ -1175,7 +1177,7 @@ export default function App() {
 
     const selectedCopy = scanResult ?? await resolveBookCopy();
     if (!selectedCopy) {
-      setMessage("Enter or scan a valid book QR/RFID/SSN value before issuing.", "error");
+      setMessage("Enter or scan a valid book QR/SSN value before issuing.", "error");
       return;
     }
 
@@ -1216,7 +1218,7 @@ export default function App() {
     }
 
     if (!bookScanValue) {
-      setMessage("Enter or scan the book copy QR/RFID/SSN value before issuing.", "error");
+      setMessage("Enter or scan the book copy QR/SSN value before issuing.", "error");
       return;
     }
 
@@ -1334,7 +1336,7 @@ export default function App() {
     event?.preventDefault();
     const value = returnScanValue.trim();
     if (!value) {
-      setMessage("Enter or scan a book QR/RFID/SSN value to check the copy.");
+      setMessage("Enter or scan a book QR/SSN value to check the copy.");
       return;
     }
     await resolveBookCopy(returnScanType, value);
@@ -1344,7 +1346,7 @@ export default function App() {
     event?.preventDefault();
     const value = renewScanValue.trim();
     if (!value) {
-      setMessage("Enter or scan a book QR/RFID/SSN value to check the copy.");
+      setMessage("Enter or scan a book QR/SSN value to check the copy.");
       return;
     }
     await resolveBookCopy(renewScanType, value);
@@ -1612,26 +1614,49 @@ export default function App() {
     }
   }
 
-  async function handleGenerateUserQr(user: UserSummary) {
+  async function showUserQr(
+    user: UserSummary,
+    fetchQr: (userId: string, actorUserId: string) => Promise<{ fullName: string; qrCredential: string }>,
+    successMessage: (fullName: string) => string,
+    failureMessage: string
+  ) {
     setGeneratedQr(null);
 
     if (!currentUser) {
-      setMessage("Sign in as admin to generate user QR codes.");
+      setMessage("Sign in as admin to manage user QR codes.");
       return;
     }
 
     try {
-      const qrCredential = await getUserQrCredential(user.id, currentUser.userId);
+      const qrCredential = await fetchQr(user.id, currentUser.userId);
       const dataUrl = await QRCode.toDataURL(qrCredential.qrCredential, {
         margin: 2,
         width: 220
       });
       setGeneratedQr({ fullName: qrCredential.fullName, dataUrl, value: qrCredential.qrCredential });
-      setMessage(`QR code generated for ${qrCredential.fullName}.`);
+      setMessage(successMessage(qrCredential.fullName));
     } catch (error) {
       setGeneratedQr(null);
-      setMessage(error instanceof Error ? error.message : "QR generation failed.");
+      setMessage(error instanceof Error ? error.message : failureMessage);
     }
+  }
+
+  async function handleGenerateUserQr(user: UserSummary) {
+    await showUserQr(
+      user,
+      getUserQrCredential,
+      (fullName) => `QR code ready for ${fullName}.`,
+      "QR generation failed."
+    );
+  }
+
+  async function handleRenewUserQr(user: UserSummary) {
+    await showUserQr(
+      user,
+      renewUserQrCredential,
+      (fullName) => `QR code renewed for ${fullName}.`,
+      "QR renewal failed."
+    );
   }
 
   async function handleViewUser(user: UserSummary) {
@@ -2652,17 +2677,16 @@ export default function App() {
                   </h3>
                   <p>
                     {canIssueToStudents
-                      ? "Step 2: Scan the book QR or enter the book QR/RFID/SSN value manually."
-                      : "Scan the book QR or enter the book QR/RFID/SSN value manually."}
+                      ? "Step 2: Scan the book QR or enter the book QR/SSN value manually."
+                      : "Scan the book QR or enter the book QR/SSN value manually."}
                   </p>
                   <form className="scan-form" onSubmit={handleScan}>
                     <select value={scanType} onChange={(event) => setScanType(event.target.value as ScanType)}>
                       <option value="QR">Book QR</option>
-                      <option value="RFID">RFID Tag</option>
                       <option value="SSN">SSN</option>
                     </select>
                     <input
-                      placeholder={scanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}
+                      placeholder={scanType === "SSN" ? "Book SSN number" : "Book QR value"}
                       value={scanValue}
                       onChange={(event) => {
                         setScanValue(event.target.value);
@@ -2725,7 +2749,7 @@ export default function App() {
                 )}
               </div>
               {canIssueToStudents && !isStaffIssueReady && (
-                <p className="issue-hint">Enter the student roll number or faculty staff code and the book copy QR/RFID/SSN value to issue.</p>
+                <p className="issue-hint">Enter the student roll number or faculty staff code and the book copy QR/SSN value to issue.</p>
               )}
             </div>
           )}
@@ -2791,15 +2815,14 @@ export default function App() {
 
                 <div className="staff-issue-panel">
                   <h3><span className="step-badge">2</span> Book</h3>
-                  <p>Scan book QR or enter book QR/RFID/SSN.</p>
+                  <p>Scan book QR or enter book QR/SSN.</p>
                   <form className="scan-form" onSubmit={(event) => void handleCheckReturnCopy(event)}>
                     <select value={returnScanType} onChange={(event) => setReturnScanType(event.target.value as ScanType)}>
                       <option value="QR">Book QR</option>
-                      <option value="RFID">RFID Tag</option>
                       <option value="SSN">SSN</option>
                     </select>
                     <input
-                      placeholder={returnScanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}
+                      placeholder={returnScanType === "SSN" ? "Book SSN number" : "Book QR value"}
                       value={returnScanValue}
                       onChange={(event) => {
                         setReturnScanValue(event.target.value);
@@ -2903,15 +2926,14 @@ export default function App() {
 
                 <div className="staff-issue-panel">
                   <h3><span className="step-badge">2</span> Book</h3>
-                  <p>Scan book QR or enter book QR/RFID/SSN.</p>
+                  <p>Scan book QR or enter book QR/SSN.</p>
                   <form className="scan-form" onSubmit={(event) => void handleCheckRenewCopy(event)}>
                     <select value={renewScanType} onChange={(event) => setRenewScanType(event.target.value as ScanType)}>
                       <option value="QR">Book QR</option>
-                      <option value="RFID">RFID Tag</option>
                       <option value="SSN">SSN</option>
                     </select>
                     <input
-                      placeholder={renewScanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}
+                      placeholder={renewScanType === "SSN" ? "Book SSN number" : "Book QR value"}
                       value={renewScanValue}
                       onChange={(event) => {
                         setRenewScanValue(event.target.value);
@@ -3467,11 +3489,10 @@ export default function App() {
                 onChange={(event) => setBookHistoryScanType(event.target.value as ScanType)}
               >
                 <option value="QR">Book QR</option>
-                <option value="RFID">RFID Tag</option>
                 <option value="SSN">SSN</option>
               </select>
               <input
-                placeholder={bookHistoryScanType === "SSN" ? "Book SSN number" : "Book QR or RFID value"}
+                placeholder={bookHistoryScanType === "SSN" ? "Book SSN number" : "Book QR value"}
                 value={bookHistoryScanValue}
                 onChange={(event) => {
                   setBookHistoryScanValue(event.target.value);
@@ -3599,7 +3620,7 @@ export default function App() {
             <div className="modal-header">
               <div>
                 <h2>Scanned Book Copy</h2>
-                <p>Details for the QR/RFID/SSN you just checked.</p>
+                <p>Details for the QR/SSN you just checked.</p>
               </div>
               <button type="button" className="secondary-button" onClick={() => setIsScanResultOpen(false)}>
                 Close
@@ -4184,9 +4205,14 @@ export default function App() {
                           </button>
                         )}
                         {canGenerateUserQr && (
-                          <button type="button" onClick={() => void handleGenerateUserQr(user)}>
-                            Generate QR
-                          </button>
+                          <>
+                            <button type="button" onClick={() => void handleGenerateUserQr(user)}>
+                              Generate QR
+                            </button>
+                            <button type="button" className="secondary-button" onClick={() => void handleRenewUserQr(user)}>
+                              Renew QR
+                            </button>
+                          </>
                         )}
                         {((user.roles.includes("STUDENT") && canManageStudents)
                           || (user.roles.includes("FACULTY") && canManageLibrarians)

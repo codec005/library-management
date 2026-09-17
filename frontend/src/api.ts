@@ -436,6 +436,13 @@ export function getUserQrCredential(userId: string, actorUserId: string) {
   });
 }
 
+export function renewUserQrCredential(userId: string, actorUserId: string) {
+  return request<UserQrCredentialResponse>(`/api/users/${userId}/qr-credential/renew`, {
+    method: "POST",
+    headers: { "X-Actor-User-Id": actorUserId }
+  });
+}
+
 export function getUserDetails(userId: string, actorUserId: string) {
   return request<UserDetailsResponse>(`/api/users/${userId}`, {
     headers: { "X-Actor-User-Id": actorUserId }

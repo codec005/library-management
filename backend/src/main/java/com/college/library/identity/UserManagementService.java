@@ -225,14 +225,44 @@ public class UserManagementService implements UserManagementUseCase {
             .filter(UserAccount::isActive)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        String qrCredential = rotateOrCreateQrCredential(user).getValue();
+        var existingQr = userIdentifierRepository.findByUserAndType(user, IdentifierType.QR_CREDENTIAL);
+        if (existingQr.isPresent()) {
+            return new UserQrCredentialResponse(user.getId(), user.getFullName(), existingQr.get().getValue());
+        }
+
+        String qrCredential = createQrCredential(user).getValue();
 
         auditLogger.record(
             AuditAction.USER_QR_GENERATE,
             actor.getId(),
             "UserAccount",
             user.getId(),
-            userLabel(user) + " · QR credential rotated"
+            userLabel(user) + " · QR credential created"
+        );
+        return new UserQrCredentialResponse(user.getId(), user.getFullName(), qrCredential);
+    }
+
+    @Override
+    @Transactional
+    public UserQrCredentialResponse renewUserQrCredential(UUID userId, UUID actorUserId) {
+        UserAccount actor = findActor(actorUserId);
+
+        if (!hasAnyRole(actor, UserRole.ADMIN, UserRole.SUPER_ADMIN)) {
+            throw new IllegalStateException("Only admin can renew user QR codes");
+        }
+
+        UserAccount user = userAccountRepository.findById(userId)
+            .filter(UserAccount::isActive)
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        String qrCredential = rotateOrCreateQrCredential(user).getValue();
+
+        auditLogger.record(
+            AuditAction.USER_QR_RENEW,
+            actor.getId(),
+            "UserAccount",
+            user.getId(),
+            userLabel(user) + " · QR credential renewed"
         );
         return new UserQrCredentialResponse(user.getId(), user.getFullName(), qrCredential);
     }
@@ -502,6 +532,19 @@ public class UserManagementService implements UserManagementUseCase {
         return value == null ? "" : value.trim();
     }
 
+    private UserIdentifier createQrCredential(UserAccount user) {
+        String rollNumber = userIdentifierRepository.findByUserAndType(user, IdentifierType.ROLL_NUMBER)
+            .map(UserIdentifier::getValue)
+            .orElse(user.getId().toString());
+        return saveNewQrCredential(user, allocateUniqueQrValue(rollNumber));
+    }
+
+    private UserIdentifier saveNewQrCredential(UserAccount user, String qrValue) {
+        UserIdentifier qrIdentifier = new UserIdentifier(IdentifierType.QR_CREDENTIAL, qrValue, true);
+        user.addIdentifier(qrIdentifier);
+        return userIdentifierRepository.save(qrIdentifier);
+    }
+
     private UserIdentifier rotateOrCreateQrCredential(UserAccount user) {
         String rollNumber = userIdentifierRepository.findByUserAndType(user, IdentifierType.ROLL_NUMBER)
             .map(UserIdentifier::getValue)
@@ -512,11 +555,7 @@ public class UserManagementService implements UserManagementUseCase {
                 existing.updateValue(qrValue);
                 return userIdentifierRepository.save(existing);
             })
-            .orElseGet(() -> {
-                UserIdentifier qrIdentifier = new UserIdentifier(IdentifierType.QR_CREDENTIAL, qrValue, true);
-                user.addIdentifier(qrIdentifier);
-                return userIdentifierRepository.save(qrIdentifier);
-            });
+            .orElseGet(() -> saveNewQrCredential(user, qrValue));
     }
 
     private String allocateUniqueQrValue(String rollNumber) {

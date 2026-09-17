@@ -129,4 +129,12 @@ public class UserManagementController {
     ) {
         return ResponseEntity.ok(userManagementUseCase.getUserQrCredential(userId, actorUserId));
     }
+
+    @PostMapping("/{userId}/qr-credential/renew")
+    ResponseEntity<UserQrCredentialResponse> renewUserQrCredential(
+        @RequestHeader(ACTOR_HEADER) UUID actorUserId,
+        @PathVariable UUID userId
+    ) {
+        return ResponseEntity.ok(userManagementUseCase.renewUserQrCredential(userId, actorUserId));
+    }
 }

@@ -65,11 +65,12 @@ select {
 .m-logo {
   background: #fff;
   border: 1px solid var(--m-accent-soft);
-  border-radius: 14px;
+  border-radius: 16px;
   flex-shrink: 0;
-  height: 56px;
+  height: 72px;
   overflow: hidden;
-  width: 56px;
+  padding: 0.28rem;
+  width: 72px;
 }
 
 .m-logo img {

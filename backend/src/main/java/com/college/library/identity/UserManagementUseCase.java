@@ -17,6 +17,8 @@ public interface UserManagementUseCase {
 
     UserQrCredentialResponse getUserQrCredential(UUID userId, UUID actorUserId);
 
+    UserQrCredentialResponse renewUserQrCredential(UUID userId, UUID actorUserId);
+
     UserDetailsResponse getUserDetails(UUID userId, UUID actorUserId);
 
     UserDetailsResponse getStudentDetailsByIdentifier(IdentifierType identifierType, String identifier, UUID actorUserId);

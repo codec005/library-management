@@ -45,6 +45,7 @@ import {
   getStudentDetailsByIdentifier,
   getUserDetails,
   getUserQrCredential,
+  renewUserQrCredential,
   issueBookByIdentifier,
   issueBookCopy,
   listAllIssuedBooks,
@@ -103,6 +104,7 @@ const AUDIT_ACTION_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "USER_REMOVE", label: "User deleted" },
   { value: "USER_UPDATE", label: "User updated" },
   { value: "USER_QR_GENERATE", label: "User QR generated" },
+  { value: "USER_QR_RENEW", label: "User QR renewed" },
   { value: "PASSWORD_CHANGE", label: "Password changed" },
   { value: "BOOK_ADD", label: "Book added" },
   { value: "BOOK_UPDATE", label: "Book updated" },
@@ -681,7 +683,7 @@ export default function MobileApp() {
     }
     const trimmed = value.trim();
     if (!trimmed) {
-      setMessage("Enter or scan a book QR/RFID/SSN value.", "error");
+      setMessage("Enter or scan a book QR/SSN value.", "error");
       return null;
     }
     try {
@@ -913,10 +915,26 @@ export default function MobileApp() {
       const qrCredential = await getUserQrCredential(user.id, currentUser.userId);
       const dataUrl = await QRCode.toDataURL(qrCredential.qrCredential, { margin: 2, width: 220 });
       setGeneratedQr({ fullName: qrCredential.fullName, dataUrl, value: qrCredential.qrCredential });
-      setMessage(`QR code generated for ${qrCredential.fullName}.`, "success");
+      setMessage(`QR code ready for ${qrCredential.fullName}.`, "success");
     } catch (error) {
       setGeneratedQr(null);
       setMessage(error instanceof Error ? error.message : "QR generation failed.", "error");
+    }
+  }
+
+  async function handleRenewUserQr(user: UserSummary) {
+    if (!currentUser || !canManageLibrarians) {
+      setMessage("Sign in as admin to renew user QR codes.", "error");
+      return;
+    }
+    try {
+      const qrCredential = await renewUserQrCredential(user.id, currentUser.userId);
+      const dataUrl = await QRCode.toDataURL(qrCredential.qrCredential, { margin: 2, width: 220 });
+      setGeneratedQr({ fullName: qrCredential.fullName, dataUrl, value: qrCredential.qrCredential });
+      setMessage(`QR code renewed for ${qrCredential.fullName}.`, "success");
+    } catch (error) {
+      setGeneratedQr(null);
+      setMessage(error instanceof Error ? error.message : "QR renewal failed.", "error");
     }
   }
 
@@ -1321,7 +1339,7 @@ export default function MobileApp() {
     const type = override?.type ?? bookHistoryScanType;
     const value = (override?.value ?? bookHistoryScanValue).trim();
     if (!value) {
-      setMessage("Enter or scan a book QR/RFID/SSN value to view history.", "error");
+      setMessage("Enter or scan a book QR/SSN value to view history.", "error");
       return;
     }
     try {
@@ -1460,7 +1478,6 @@ export default function MobileApp() {
           <select value={selfScanType} onChange={(event) => setSelfScanType(event.target.value as ScanType)}>
             <option value="QR">QR</option>
             <option value="SSN">SSN</option>
-            <option value="RFID">RFID</option>
           </select>
         </label>
         <label className="m-field">
@@ -1471,7 +1488,7 @@ export default function MobileApp() {
               setSelfScanValue(event.target.value);
               setSelfScanResult(null);
             }}
-            placeholder="Book QR / SSN / RFID"
+            placeholder="Book QR / SSN"
           />
         </label>
         <QrScanner
@@ -1650,7 +1667,6 @@ export default function MobileApp() {
           <select value={bookScanType} onChange={(event) => setBookScanType(event.target.value as ScanType)}>
             <option value="QR">QR</option>
             <option value="SSN">SSN</option>
-            <option value="RFID">RFID</option>
           </select>
         </label>
         <label className="m-field">
@@ -1658,7 +1674,7 @@ export default function MobileApp() {
           <input
             value={bookScanValue}
             onChange={(event) => setBookScanValue(event.target.value)}
-            placeholder="Book QR / SSN / RFID"
+            placeholder="Book QR / SSN"
           />
         </label>
         <QrScanner
@@ -2007,6 +2023,16 @@ export default function MobileApp() {
                       <button type="button" className="m-btn secondary" onClick={() => void handleViewUser(user)}>
                         View
                       </button>
+                      {canManageLibrarians && (
+                        <>
+                          <button type="button" className="m-btn secondary" onClick={() => void handleGenerateUserQr(user)}>
+                            Generate QR
+                          </button>
+                          <button type="button" className="m-btn secondary" onClick={() => void handleRenewUserQr(user)}>
+                            Renew QR
+                          </button>
+                        </>
+                      )}
                     </div>
                     {canManageLibrarians
                       && ((user.roles.includes("STUDENT") && canManageStudents)
@@ -2014,9 +2040,6 @@ export default function MobileApp() {
                         || (user.roles.includes("LIBRARIAN") && canManageLibrarians)
                         || (user.roles.includes("ADMIN") && canManageLibrarians && user.id !== currentUser?.userId)) && (
                       <div className="m-stack">
-                        <button type="button" className="m-btn secondary" onClick={() => void handleGenerateUserQr(user)}>
-                          Generate QR
-                        </button>
                         <button
                           type="button"
                           className="m-btn secondary"
@@ -2717,7 +2740,6 @@ export default function MobileApp() {
           >
             <option value="SSN">SSN</option>
             <option value="QR">QR</option>
-            <option value="RFID">RFID</option>
           </select>
         </label>
         <label className="m-field">
@@ -2725,7 +2747,7 @@ export default function MobileApp() {
           <input
             value={bookHistoryScanValue}
             onChange={(event) => setBookHistoryScanValue(event.target.value)}
-            placeholder="Book QR / SSN / RFID"
+            placeholder="Book QR / SSN"
           />
         </label>
         <QrScanner

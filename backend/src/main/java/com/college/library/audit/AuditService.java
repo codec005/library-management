@@ -129,6 +129,7 @@ public class AuditService implements AuditLogger, AuditUseCase {
             case USER_UPDATE -> doneBy + " updated user " + rememberedUserLabel(details, targetUser)
                 + (details == null ? "" : " (" + registeredRole(details) + ")");
             case USER_QR_GENERATE -> doneBy + " generated QR for " + rememberedUserLabel(details, targetUser);
+            case USER_QR_RENEW -> doneBy + " renewed QR for " + rememberedUserLabel(details, targetUser);
             case PASSWORD_CHANGE -> doneBy + " changed password for " + rememberedUserLabel(details, targetUser);
             case BOOK_ADD -> doneBy + " added book" + (details == null ? "" : " " + details);
             case BOOK_UPDATE -> doneBy + " updated book" + (details == null ? "" : " " + details);
@@ -196,6 +197,7 @@ public class AuditService implements AuditLogger, AuditUseCase {
             case BOOK_UPDATE -> "Book updated";
             case BOOK_REMOVE -> "Book removed";
             case USER_QR_GENERATE -> "User QR generated";
+            case USER_QR_RENEW -> "User QR renewed";
             case PASSWORD_CHANGE -> "Password changed";
         };
     }
