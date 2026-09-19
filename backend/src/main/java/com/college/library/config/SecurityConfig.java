@@ -29,7 +29,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/h2-console/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/rfid-login").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/rfid-login", "/api/auth/student-qr").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/users/register/student").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/branding", "/api/branding/logo", "/api/settings").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/catalog/**").permitAll()

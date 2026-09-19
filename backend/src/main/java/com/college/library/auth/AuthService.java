@@ -113,6 +113,38 @@ public class AuthService implements AuthUseCase {
     @Override
     @Transactional
     public LoginResponse scanLogin(ScanLoginRequest request) {
+        UserAccount user = resolveScannedAccount(request);
+
+        if (!user.getRoles().contains(UserRole.STUDENT)) {
+            throw new BadCredentialsException("Staff must use the Staff Login window");
+        }
+
+        if (appSettingsService.isStudentPasswordRequired()) {
+            throw new BadCredentialsException(
+                "Student password login is enabled. Scan your QR, then enter your password."
+            );
+        }
+
+        auditLogger.record(
+            AuditAction.SCAN_LOGIN,
+            user.getId(),
+            "UserAccount",
+            user.getId(),
+            user.getFullName() + " · " + request.identifierType().name()
+        );
+        return toLoginResponse(user);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void checkStudentQr(ScanLoginRequest request) {
+        UserAccount user = resolveScannedAccount(request);
+        if (!user.getRoles().contains(UserRole.STUDENT)) {
+            throw new BadCredentialsException("Staff must use the Staff Login window");
+        }
+    }
+
+    private UserAccount resolveScannedAccount(ScanLoginRequest request) {
         if (request.identifierType() != IdentifierType.QR_CREDENTIAL && request.identifierType() != IdentifierType.RFID_CARD) {
             throw new BadCredentialsException("Scan login supports only QR or RFID credentials");
         }
@@ -126,24 +158,7 @@ public class AuthService implements AuthUseCase {
             throw new BadCredentialsException("Account is inactive");
         }
 
-        if (!user.getRoles().contains(UserRole.STUDENT)) {
-            throw new BadCredentialsException("Staff must use ID and password login");
-        }
-
-        if (appSettingsService.isStudentPasswordRequired()) {
-            throw new BadCredentialsException(
-                "Student password login is enabled. Scan your QR to fill roll number, then enter your password."
-            );
-        }
-
-        auditLogger.record(
-            AuditAction.SCAN_LOGIN,
-            user.getId(),
-            "UserAccount",
-            user.getId(),
-            user.getFullName() + " · " + request.identifierType().name()
-        );
-        return toLoginResponse(user);
+        return user;
     }
 
     private void ensureLoginNotLocked(UserAccount user, Instant now) {

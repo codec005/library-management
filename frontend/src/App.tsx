@@ -55,6 +55,7 @@ import {
   returnBookCopy,
   scanBookCopy,
   scanLogin,
+  checkStudentQr,
   searchBooks,
   searchGroupedBooks,
   listCopiesByTitle,
@@ -621,30 +622,13 @@ export default function App() {
       setStudentPasswordRequired(settings.studentPasswordRequired);
       setMessage(
         settings.studentPasswordRequired
-          ? "Students must now sign in with roll number and password."
+          ? "Students must now scan their QR, then enter a password."
           : "Students now sign in with QR scan only."
       );
     } catch (error) {
       setStudentPasswordRequired(previous);
       setMessage(error instanceof Error ? error.message : "Unable to save portal settings.");
     }
-  }
-
-  function rollNumberFromStudentQr(value: string) {
-    const trimmed = value.trim();
-    // USER-QR-{roll}-{randomId} (randomId is 32 hex chars)
-    const withRandom = /^USER-QR-(.+)-([A-Fa-f0-9]{32})$/i.exec(trimmed);
-    if (withRandom?.[1]) {
-      return withRandom[1].trim();
-    }
-    // Legacy: USER-QR-{roll}
-    const legacy = /^USER-QR-(.+)$/i.exec(trimmed);
-    if (legacy?.[1]) {
-      return legacy[1].trim();
-    }
-    // Previous interim format: QR:{roll}:{secret}
-    const colonFormat = /^QR:([^:]+):[A-Fa-f0-9]+$/i.exec(trimmed);
-    return colonFormat?.[1]?.trim() || trimmed;
   }
 
   async function saveBranding(nextCollegeName: string, logoDataUrl?: string) {
@@ -1069,9 +1053,9 @@ export default function App() {
     event.preventDefault();
     setMessage("");
 
-    const rollNumber = studentLoginRoll.trim();
-    if (!rollNumber) {
-      setMessage("Enter or scan your roll number first.");
+    const qrCredential = studentLoginRoll.trim();
+    if (!qrCredential) {
+      setMessage("Scan your student QR first.");
       return;
     }
     if (!studentLoginPassword) {
@@ -1080,14 +1064,14 @@ export default function App() {
     }
 
     try {
-      const user = await login("ROLL_NUMBER", rollNumber, studentLoginPassword, false);
+      const user = await login("QR_CREDENTIAL", qrCredential, studentLoginPassword, false);
       clearSessionOnlyState();
       clearLoginInputs();
       setCurrentUser(user);
       await loadCurrentUserViews(user);
       setMessage(`Welcome, ${user.fullName}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Student login failed. Check roll number and password.");
+      setMessage(error instanceof Error ? error.message : "Student login failed. Check the QR and password.");
     }
   }
 
@@ -1095,9 +1079,21 @@ export default function App() {
     setMessage("");
 
     if (studentPasswordRequired) {
-      setStudentLoginRoll(rollNumberFromStudentQr(value));
-      setUserScanValue(value);
-      setMessage("Roll number filled from QR. Enter your password to sign in.");
+      const qrCredential = value.trim();
+      if (!qrCredential) {
+        setMessage("Scan a valid student QR code.");
+        return;
+      }
+      try {
+        await checkStudentQr(qrCredential);
+        setStudentLoginRoll(qrCredential);
+        setUserScanValue(qrCredential);
+        setMessage("QR scanned. Enter your password to sign in.");
+      } catch (error) {
+        setStudentLoginRoll("");
+        setUserScanValue("");
+        setMessage(error instanceof Error ? error.message : "QR login failed. Scan a valid student QR code.");
+      }
       return;
     }
 
@@ -2518,37 +2514,43 @@ export default function App() {
                   <QrCode size={22} />
                   <div>
                     <h2>Student Login</h2>
-                    <p>Scan your ID QR to fill roll number, then enter your password.</p>
+                    <p>Scan your ID QR, then enter your password.</p>
                   </div>
                 </div>
 
-                <label>
-                  Roll Number
-                  <input
-                    placeholder="Scan QR or enter roll number"
-                    value={studentLoginRoll}
-                    onChange={(event) => setStudentLoginRoll(event.target.value)}
+                {!studentLoginRoll ? (
+                  <QrScanner
+                    label="Scan Student QR"
+                    onDetected={(value) => {
+                      void handleUserScanLogin(value);
+                    }}
                   />
-                </label>
-
-                <label>
-                  Password
-                  <input
-                    type="password"
-                    placeholder="Enter password"
-                    value={studentLoginPassword}
-                    onChange={(event) => setStudentLoginPassword(event.target.value)}
-                  />
-                </label>
-
-                <button type="submit">Sign In Student</button>
-
-                <QrScanner
-                  label="Scan Student QR"
-                  onDetected={(value) => {
-                    void handleUserScanLogin(value);
-                  }}
-                />
+                ) : (
+                  <>
+                    <p className="issue-hint">QR scanned. Enter your password to sign in.</p>
+                    <label>
+                      Password
+                      <input
+                        type="password"
+                        placeholder="Enter password"
+                        value={studentLoginPassword}
+                        onChange={(event) => setStudentLoginPassword(event.target.value)}
+                      />
+                    </label>
+                    <button type="submit">Sign In Student</button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        setStudentLoginRoll("");
+                        setStudentLoginPassword("");
+                        setUserScanValue("");
+                      }}
+                    >
+                      Scan QR Again
+                    </button>
+                  </>
+                )}
               </form>
             ) : (
               <article className="login-card">
@@ -3091,11 +3093,11 @@ export default function App() {
                   onChange={(event) => void handleStudentPasswordRequiredChange(event.target.value === "yes")}
                 >
                   <option value="no">No — QR scan only</option>
-                  <option value="yes">Yes — roll number + password</option>
+                  <option value="yes">Yes — QR scan, then password</option>
                 </select>
                 <span className="list-note">
                   {studentPasswordRequired
-                    ? "Students scan QR to fill roll number, then type their password. Change Password is available for students."
+                    ? "Students scan their QR first, then type their password. Change Password is available for students."
                     : "Students sign in with QR scan only. Change Password is hidden for student accounts."}
                 </span>
               </label>

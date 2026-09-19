@@ -66,6 +66,7 @@ import {
   returnBookByIdentifier,
   scanBookCopy,
   scanLogin,
+  checkStudentQr,
   searchBooks,
   searchGroupedBooks,
   updateAppSettings,
@@ -130,20 +131,6 @@ function statusToneClass(status: string) {
     return "m-status-issued";
   }
   return "";
-}
-
-function rollNumberFromStudentQr(value: string) {
-  const trimmed = value.trim();
-  const withRandom = /^USER-QR-(.+)-([A-Fa-f0-9]{32})$/i.exec(trimmed);
-  if (withRandom?.[1]) {
-    return withRandom[1].trim();
-  }
-  const legacy = /^USER-QR-(.+)$/i.exec(trimmed);
-  if (legacy?.[1]) {
-    return legacy[1].trim();
-  }
-  const colonFormat = /^QR:([^:]+):[A-Fa-f0-9]+$/i.exec(trimmed);
-  return colonFormat?.[1]?.trim() || trimmed;
 }
 
 function formatTimer(totalSeconds: number) {
@@ -467,9 +454,9 @@ export default function MobileApp() {
 
   async function handleStudentLogin(event: FormEvent) {
     event.preventDefault();
-    const roll = studentRoll.trim();
-    if (!roll) {
-      setMessage("Enter or scan your roll number first.", "error");
+    const qrCredential = studentRoll.trim();
+    if (!qrCredential) {
+      setMessage("Scan your student QR first.", "error");
       return;
     }
     if (!studentPassword) {
@@ -477,7 +464,7 @@ export default function MobileApp() {
       return;
     }
     try {
-      const user = await login("ROLL_NUMBER", roll, studentPassword, false);
+      const user = await login("QR_CREDENTIAL", qrCredential, studentPassword, false);
       await afterLogin(user, `Welcome, ${user.fullName}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Student login failed.", "error");
@@ -486,8 +473,20 @@ export default function MobileApp() {
 
   async function handleStudentQr(value: string) {
     if (studentPasswordRequired) {
-      setStudentRoll(rollNumberFromStudentQr(value));
-      setMessage("Roll number filled from QR. Enter your password.", "info");
+      const qrCredential = value.trim();
+      if (!qrCredential) {
+        setMessage("Scan a valid student QR code.", "error");
+        return;
+      }
+      try {
+        await checkStudentQr(qrCredential);
+        setStudentRoll(qrCredential);
+        setMessage("QR scanned. Enter your password.", "info");
+      } catch (error) {
+        setStudentRoll("");
+        setStudentPassword("");
+        setMessage(error instanceof Error ? error.message : "QR login failed.", "error");
+      }
       return;
     }
     try {
@@ -779,7 +778,7 @@ export default function MobileApp() {
       setStudentPasswordRequired(settings.studentPasswordRequired);
       setMessage(
         settings.studentPasswordRequired
-          ? "Students must now sign in with roll number and password."
+          ? "Students must now scan their QR, then enter a password."
           : "Students now sign in with QR scan only.",
         "success"
       );
@@ -3041,23 +3040,35 @@ export default function MobileApp() {
             studentPasswordRequired ? (
               <form className="m-stack" onSubmit={(event) => void handleStudentLogin(event)}>
                 <h2>Student Login</h2>
-                <p>Scan QR to fill roll number, then enter password.</p>
-                <label className="m-field">
-                  <span>Roll number</span>
-                  <input value={studentRoll} onChange={(event) => setStudentRoll(event.target.value)} />
-                </label>
-                <label className="m-field">
-                  <span>Password</span>
-                  <input
-                    type="password"
-                    value={studentPassword}
-                    onChange={(event) => setStudentPassword(event.target.value)}
-                  />
-                </label>
-                <button type="submit" className="m-btn">
-                  Sign In
-                </button>
-                <QrScanner label="Scan Student QR" onDetected={(value) => void handleStudentQr(value)} />
+                <p>Scan your ID QR, then enter your password.</p>
+                {!studentRoll ? (
+                  <QrScanner label="Scan Student QR" onDetected={(value) => void handleStudentQr(value)} />
+                ) : (
+                  <>
+                    <p>QR scanned. Enter your password.</p>
+                    <label className="m-field">
+                      <span>Password</span>
+                      <input
+                        type="password"
+                        value={studentPassword}
+                        onChange={(event) => setStudentPassword(event.target.value)}
+                      />
+                    </label>
+                    <button type="submit" className="m-btn">
+                      Sign In
+                    </button>
+                    <button
+                      type="button"
+                      className="m-btn secondary"
+                      onClick={() => {
+                        setStudentRoll("");
+                        setStudentPassword("");
+                      }}
+                    >
+                      Scan QR Again
+                    </button>
+                  </>
+                )}
               </form>
             ) : (
               <div className="m-stack">

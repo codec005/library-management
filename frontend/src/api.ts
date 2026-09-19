@@ -250,6 +250,13 @@ export async function scanLogin(identifierType: "QR_CREDENTIAL" | "RFID_CARD", i
   return result;
 }
 
+export async function checkStudentQr(identifier: string) {
+  await request<void>("/api/auth/student-qr", {
+    method: "POST",
+    body: JSON.stringify({ identifierType: "QR_CREDENTIAL", identifier })
+  });
+}
+
 export interface PageResponse<T> {
   content: T[];
   page: number;

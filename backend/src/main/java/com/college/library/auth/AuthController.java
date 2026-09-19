@@ -24,6 +24,12 @@ public class AuthController {
 
     @PostMapping("/rfid-login")
     ResponseEntity<LoginResponse> scanLogin(@Valid @RequestBody ScanLoginRequest request) {
-        return ResponseEntity.ok(authUseCase.scanLogin(request)); // when user enters /api/auth then control goes to AuthController class and when user further enters /api/auth/scan-login control comes to this scanLogin function
+        return ResponseEntity.ok(authUseCase.scanLogin(request));
+    }
+
+    @PostMapping("/student-qr")
+    ResponseEntity<Void> checkStudentQr(@Valid @RequestBody ScanLoginRequest request) {
+        authUseCase.checkStudentQr(request);
+        return ResponseEntity.noContent().build();
     }
 }

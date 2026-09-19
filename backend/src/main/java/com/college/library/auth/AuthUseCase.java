@@ -5,4 +5,6 @@ public interface AuthUseCase {
     LoginResponse login(LoginRequest request);
 
     LoginResponse scanLogin(ScanLoginRequest request);
+
+    void checkStudentQr(ScanLoginRequest request);
 }
