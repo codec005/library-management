@@ -2611,7 +2611,7 @@ export default function App() {
             <BookOpen size={22} />
             <div>
               <h2>Available Books</h2>
-              <p>Browse every title and physical copy in the full catalogue.</p>
+              <p>Browse every title and physical copy in the full catalog.</p>
             </div>
           </div>
 
@@ -2620,7 +2620,7 @@ export default function App() {
           </p>
 
           <button type="button" className="secondary-button directory-button" onClick={() => void handleOpenCatalogWindow()}>
-            Open Full Catalogue
+            Open Full Catalog
           </button>
         </article>
 
@@ -3754,7 +3754,7 @@ export default function App() {
           className="modal-backdrop"
           role="dialog"
           aria-modal="true"
-          aria-label="Full catalogue"
+          aria-label="Full catalog"
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               setSelectedTitleGroup(null);
@@ -3765,7 +3765,7 @@ export default function App() {
           <div className="modal-panel full-catalog-window">
             <div className="modal-header">
               <div>
-                <h2>Full Catalogue</h2>
+                <h2>Full Catalog</h2>
                 <p>Same titles are grouped and paginated. Click a row for SSN, author, publisher, and other details.</p>
               </div>
               <button
@@ -3861,7 +3861,7 @@ export default function App() {
 
             <div className="book-list">
               {catalogLoading ? (
-                <div className="empty-state">Loading catalogue titles…</div>
+                <div className="empty-state">Loading catalog titles…</div>
               ) : catalogBooks.length === 0 ? (
                 <div className="empty-state">No books found.</div>
               ) : (
